@@ -1,0 +1,10 @@
+{
+  "name": "puppeter",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "node-warc": "^3.3.1",
+    "pupeteer": "^0.0.1",
+    "puppeteer": "^19.8.0"
+  }
+}
