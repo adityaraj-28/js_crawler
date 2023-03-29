@@ -1,23 +1,14 @@
 const puppeteer = require('puppeteer')
-const { Events } = require('puppeteer')
-const { PuppeteerWARCGenerator, PuppeteerCapturer } = require('node-warc')
 
 ;(async () => {
-    const browser = await puppeteer.launch({headless: false})
+    const browser = await puppeteer.launch()
     const page = await browser.newPage()
-    const cap = new PuppeteerCapturer(page)
-    cap.startCapturing()
-    await page.goto('https://twitter.com', { waitUntil: 'networkidle0' })
-    const warcGen = new PuppeteerWARCGenerator()
-    await warcGen.generateWARC(cap, {
-        warcOpts: {
-            warcPath: 'myWARC.warc'
-        },
-        winfo: {
-            description: 'I created a warc!',
-            isPartOf: 'My awesome pywb collection'
-        }
-    })
+    const response = await page.goto('http://1protocol.com', { waitUntil: 'networkidle0' })
+    const chain = response.request().redirectChain().map(e => e.url());
+    chain.push(response.url())
+    const content = await page.content();
+    console.log(content)
+    chain.forEach(url => { console.log(url) })
     await page.close()
     await browser.close()
 })()
