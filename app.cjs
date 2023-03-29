@@ -1,12 +1,30 @@
 const puppeteer = require('puppeteer')
 const CONSTANTS = require("./constants.js");
 
-// ( async (page, domain)
-// )
+formUrlAndCall = (async (page, domain) => {
+    let response = null
+    for (const protocol of CONSTANTS.PROTOCOLS) {
+        try {
+            response = await page.goto(domain, {waitUntil: 'networkidle0', timeout: 15000})
+            if(response.status === 200){
+                break
+            }
+        } catch(e) {
+            if(e instanceof puppeteer.TimeoutError){
+                console.log('Retrying with other protocol')
+            }
+        }
+    }
+    if (!domain.startsWith('www.') && response === null){
+        response = await formUrlAndCall(page, `www.${domain}`)
+    }
+    return response
+    // e instanceof puppeteer.TimeoutError
+})
 crawl = (async (domain, proxy=null) => {
     let page = null
     let browser = null
-    try {
+    // try {
         let chromium_args = [
             '--lang=en-GB',
             '--no-sandbox',
@@ -28,7 +46,7 @@ crawl = (async (domain, proxy=null) => {
         page = await browser.newPage()
         let response = null
         try {
-            response = await page.goto(domain, {waitUntil: 'networkidle0'})
+            response = await formUrlAndCall(page, domain)
             const chain = response.request().redirectChain().map(e => e.url());
             chain.push(response.url())
             const content = await page.content();
@@ -36,16 +54,17 @@ crawl = (async (domain, proxy=null) => {
             chain.forEach(url => {
                 console.log(url)
             })
-        } catch (error) {
+        } catch (e) {
             // todo: log this error to DB
-            console.log(error)
+            console.log(e)
         }
-    } catch(error) {
-        if (page !== null)
-            await page.close()
-        if (browser !== null)
-            await browser.close()
-    }
+    // } catch(error) {
+    //     console.log(error)
+    // }
+    if (page !== null)
+    await page.close()
+    if (browser !== null)
+        await browser.close()
 })
 
-crawl('https://illumin.com/')
+crawl('https://100marke435345ts.com/')
