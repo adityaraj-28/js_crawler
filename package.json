@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "type": "commonjs",
   "dependencies": {
+    "mysql2": "^3.2.0",
     "node-warc": "^3.3.1",
+    "playwright": "^1.32.1",
     "pupeteer": "^0.0.1",
     "puppeteer": "^19.8.0",
     "warc": "^1.0.1"
