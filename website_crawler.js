@@ -229,6 +229,11 @@ module.exports.main = async (event, context, callback) => {
     if(level === 0) {
         // for level 0 raw url is domain
         const domain = cleanDomain(raw_url);
+        console.log('domain name' + domain)
+        if(domain.startsWith('mailto:')) {
+            callback('Invalid Url', null)
+            return
+        }
         await Promise.all([
             processUrl('www.' + domain, proxy, level)
         ]).then((response) => {
