@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "commonjs",
   "dependencies": {
+    "is-valid-domain": "^0.1.6",
     "mysql2": "^3.2.0",
     "node-warc": "^3.3.1",
     "playwright": "^1.32.1",

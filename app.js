@@ -1,7 +1,7 @@
 const { main } = require('./website_crawler.js');
-const db = require('./db');
+// const db = require("./db");
 
-const event = { body: {raw_url: 'mailto:topaplikasi1@gmail.com'} };
+const event = { body: {raw_url: 'apple.com'} };
 const context = {level: 0};
 
 const callback = (error, response) => {
@@ -13,10 +13,5 @@ const callback = (error, response) => {
         console.log(response);
     }
 };
-
-// db.query('SELECT * FROM domains', (err, results, fields) => {
-//     if (err) throw err;
-//     console.log(results);
-// });
 
 main(event, context, callback);

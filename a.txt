@@ -1,0 +1,147 @@
+fetching urls for domain in main
+domain to fetch urls: apple.com
+in getDomainUrls: 
+query: select url_id, url, status from urls inner join crawl_status on urls.id=crawl_status.url_id where crawl_status.domain='apple.com'
+db object: [object Object]
+Connected to MySQL database as id 1575
+get domain result: 
+https://www.apple.com/in/ 0 621
+https://www.apple.com/us/shop/goto/store 0 622
+https://www.apple.com/us/shop/goto/buy_mac 0 623
+https://www.apple.com/us/shop/goto/buy_ipad 0 624
+https://www.apple.com/us/shop/goto/buy_iphone 0 625
+https://www.apple.com 1 626
+URL: https://www.apple.com/in/, URL ID: 621, Status: 0
+URL: https://www.apple.com/us/shop/goto/store, URL ID: 622, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_mac, URL ID: 623, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_ipad, URL ID: 624, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_iphone, URL ID: 625, Status: 0
+URL: https://www.apple.com, URL ID: 626, Status: 1
+url status map length 6
+domain nameapple.com
+Processing url: https://www.apple.com level:0
+url_status_map in crawl{}
+printing keys crawl: 
+https://www.apple.com/in/
+https://www.apple.com/us/shop/goto/store
+https://www.apple.com/us/shop/goto/buy_mac
+https://www.apple.com/us/shop/goto/buy_ipad
+https://www.apple.com/us/shop/goto/buy_iphone
+https://www.apple.com
+Generated Chain:  [ 'https://www.apple.com/' ]
+Processing from urls...
+Processing url: https://www.apple.com/in/
+valid url: https://www.apple.com/in/
+printing handlemapping: 
+URL: https://www.apple.com/in/, URL ID: 621, Status: 0
+URL: https://www.apple.com/us/shop/goto/store, URL ID: 622, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_mac, URL ID: 623, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_ipad, URL ID: 624, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_iphone, URL ID: 625, Status: 0
+URL: https://www.apple.com, URL ID: 626, Status: 1
+url: https://www.apple.com/in/ map has true
+here in url_status_map.has(url)
+value [object Object]
+url status map https://www.apple.com/in/:0 : 621
+url https://www.apple.com/in/ already crawled.
+Error: url https://www.apple.com/in/ already crawled.
+    at handleMapping (/Users/admin/Desktop/work/js_crawler/website_crawler.js:100:19)
+    at /Users/admin/Desktop/work/js_crawler/website_crawler.js:132:17
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:447:9)
+Processing url: http://www.apple.com level:0
+url_status_map in crawl{}
+printing keys crawl: 
+https://www.apple.com/in/
+https://www.apple.com/us/shop/goto/store
+https://www.apple.com/us/shop/goto/buy_mac
+https://www.apple.com/us/shop/goto/buy_ipad
+https://www.apple.com/us/shop/goto/buy_iphone
+https://www.apple.com
+Generated Chain:  [ 'https://www.apple.com/', 'http://www.apple.com/' ]
+Processing from urls...
+Processing url: https://www.apple.com/in/
+valid url: https://www.apple.com/in/
+printing handlemapping: 
+URL: https://www.apple.com/in/, URL ID: 621, Status: 0
+URL: https://www.apple.com/us/shop/goto/store, URL ID: 622, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_mac, URL ID: 623, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_ipad, URL ID: 624, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_iphone, URL ID: 625, Status: 0
+URL: https://www.apple.com, URL ID: 626, Status: 1
+url: https://www.apple.com/in/ map has true
+here in url_status_map.has(url)
+value [object Object]
+url status map https://www.apple.com/in/:0 : 621
+url https://www.apple.com/in/ already crawled.
+Error: url https://www.apple.com/in/ already crawled.
+    at handleMapping (/Users/admin/Desktop/work/js_crawler/website_crawler.js:100:19)
+    at /Users/admin/Desktop/work/js_crawler/website_crawler.js:132:17
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:447:9)
+Processing url: https://apple.com level:0
+url_status_map in crawl{}
+printing keys crawl: 
+https://www.apple.com/in/
+https://www.apple.com/us/shop/goto/store
+https://www.apple.com/us/shop/goto/buy_mac
+https://www.apple.com/us/shop/goto/buy_ipad
+https://www.apple.com/us/shop/goto/buy_iphone
+https://www.apple.com
+Generated Chain:  [ 'https://www.apple.com/', 'https://apple.com/' ]
+Processing from urls...
+Processing url: https://www.apple.com/in/
+valid url: https://www.apple.com/in/
+printing handlemapping: 
+URL: https://www.apple.com/in/, URL ID: 621, Status: 0
+URL: https://www.apple.com/us/shop/goto/store, URL ID: 622, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_mac, URL ID: 623, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_ipad, URL ID: 624, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_iphone, URL ID: 625, Status: 0
+URL: https://www.apple.com, URL ID: 626, Status: 1
+url: https://www.apple.com/in/ map has true
+here in url_status_map.has(url)
+value [object Object]
+url status map https://www.apple.com/in/:0 : 621
+url https://www.apple.com/in/ already crawled.
+Error: url https://www.apple.com/in/ already crawled.
+    at handleMapping (/Users/admin/Desktop/work/js_crawler/website_crawler.js:100:19)
+    at /Users/admin/Desktop/work/js_crawler/website_crawler.js:132:17
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:447:9)
+Processing url: http://apple.com level:0
+url_status_map in crawl{}
+printing keys crawl: 
+https://www.apple.com/in/
+https://www.apple.com/us/shop/goto/store
+https://www.apple.com/us/shop/goto/buy_mac
+https://www.apple.com/us/shop/goto/buy_ipad
+https://www.apple.com/us/shop/goto/buy_iphone
+https://www.apple.com
+Generated Chain:  [ 'https://www.apple.com/', 'http://apple.com/' ]
+Processing from urls...
+Processing url: https://www.apple.com/in/
+valid url: https://www.apple.com/in/
+printing handlemapping: 
+URL: https://www.apple.com/in/, URL ID: 621, Status: 0
+URL: https://www.apple.com/us/shop/goto/store, URL ID: 622, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_mac, URL ID: 623, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_ipad, URL ID: 624, Status: 0
+URL: https://www.apple.com/us/shop/goto/buy_iphone, URL ID: 625, Status: 0
+URL: https://www.apple.com, URL ID: 626, Status: 1
+url: https://www.apple.com/in/ map has true
+here in url_status_map.has(url)
+value [object Object]
+url status map https://www.apple.com/in/:0 : 621
+url https://www.apple.com/in/ already crawled.
+Error: url https://www.apple.com/in/ already crawled.
+    at handleMapping (/Users/admin/Desktop/work/js_crawler/website_crawler.js:100:19)
+    at /Users/admin/Desktop/work/js_crawler/website_crawler.js:132:17
+    at runNextTicks (node:internal/process/task_queues:60:5)
+    at process.processImmediate (node:internal/timers:447:9)
+Success Here
+{
+  statusCode: 503,
+  headers: { 'Content-Type': 'text/plain' },
+  body: {}
+}

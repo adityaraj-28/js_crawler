@@ -1,7 +1,9 @@
 'use strict';
 const CONSTANTS = require("./constants.js");
 const playwright = require('playwright');
-const url = require('url');
+const db = require('./db')
+const _url = require('url');
+const isValidDomain = require('is-valid-domain')
 
 const ENTITY_FORMATS = CONSTANTS.ENTITY_FORMATS
 const ENTITY_REGEX = CONSTANTS.ENTITY_REGEX
@@ -33,20 +35,91 @@ function isValidUrl(url) {
     return !emojiRegex.test(url);
 }
 
+function getDomain(url) {
+    let domain
+    try {
+        domain = (new URL(url)).hostname.replace('www.', '');
+    } catch(err){
+        if(isValidDomain(url)) {
+            domain = url
+        } else {
+            throw err
+        }
+    }
+    return domain
+}
 
-function extractFromUrls(page, options) {
+function getDomainUrls(domain) {
+    console.log('domain to fetch urls: ' + domain)
+    const query = `select url_id, url, status from urls inner join crawl_status on urls.id=crawl_status.url_id where crawl_status.domain='${domain}'`
+    let url_status_map = new Map();
+    console.log('in getDomainUrls: ')
+    console.log('query: ' + query)
+    console.log('db object: ' + db)
+
+    return new Promise((resolve, reject) => {
+        db.query(query, (error, results, _) => {
+            if (error) {
+                console.log('get domain result error: ')
+                console.log(error)
+                reject(error)
+            } else {
+                console.log('get domain result: ')
+                results.forEach(function(row) {
+                    console.log(row.url, row.status, row.url_id)
+                    url_status_map.set(row.url, {
+                        status: row.status,
+                        url_id: row.url_id
+                    });
+                });
+                for (const [url, { url_id, status }] of url_status_map.entries()) {
+                    console.log(`URL: ${url}, URL ID: ${url_id}, Status: ${status}`);
+                }
+                console.log('url status map length ' + url_status_map.size)
+                resolve(url_status_map)
+            }
+        });
+    });
+}
+
+function handleMapping(url_status_map, url, domain, level, status) {
+    console.log('printing handlemapping: ')
+    for (const [url, { url_id, status }] of url_status_map.entries()) {
+        console.log(`URL: ${url}, URL ID: ${url_id}, Status: ${status}`);
+    }
+    console.log('url: '+ url + ' map has ' + url_status_map.has(url))
+    if(url_status_map.has(url)) {
+        console.log('here in url_status_map.has(url)')
+        const value = url_status_map.get(url)
+        console.log('value ' + value)
+        console.log('url status map ' + url + ':' + value['status'] + " : " + value.url_id)
+        if(value.status === false && status === true) {
+            db.query(`update crawl_status set status=true where domain='${domain}' and url_id=${value.url_id}`)
+        } else {
+            console.log(`url ${url} already crawled`)
+            throw Error(`url ${url} already crawled`)
+        }
+    } else {
+        db.query(`insert into urls (url) values ('${url}')`, (err, res, _) => {
+            if(err) throw err
+            const url_id = res.insertId
+            db.query(`insert into crawl_status (domain, url_id, status, level) values ('${domain}', ${url_id}, ${status}, ${level})`)
+        })
+    }
+}
+
+function extractUrls(page, url_status_map, level) {
     return new Promise(async (resolve, reject) => {
         console.log("Processing from urls...");
         try {
-            const parsed_url = url.parse(page.url())
+            const parsed_url = _url.parse(page.url())
             const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
-            let domain = (new URL(page.url())).hostname.replace('www.', '');
-            let entities = {}
-            for (const [key, value] of Object.entries(ENTITY_FORMATS)) {
-                entities[key] = [];
-            }
-            const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => tag.getAttribute('href') || '#')))];
-            for (let i = 0; i < elementHrefs.length; i++) {
+            let domain = getDomain(page.url())
+
+            const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => tag.getAttribute('href')).filter(href => href !== '/')))];
+            elementHrefs.push(page.url())
+            // todo: remove limit
+            for (let i = 0; i < elementHrefs.length && i<5; i++) {
                 console.log("Processing url: " + elementHrefs[i]);
                 if(!isValidUrl(elementHrefs[i])) continue
                 if(elementHrefs[i].startsWith("http")){
@@ -56,8 +129,8 @@ function extractFromUrls(page, options) {
                     elementHrefs[i] = base_url + elementHrefs[i]
                 }
                 console.log("valid url: " + elementHrefs[i])
+                handleMapping(url_status_map, elementHrefs[i], domain, level+1, false)
             }
-            resolve(entities);
         }
         catch (error) {
             reject(error);
@@ -65,43 +138,7 @@ function extractFromUrls(page, options) {
     });
 }
 
-// todo: fix this
-function fetchFromClick(key, value, page) {
-
-    return new Promise(async (resolve, reject) => {
-        console.log("Processing clickables for " + key);
-        try {
-            const hrefs = [];
-            for (let i = 0; i < ENTITY_REGEX[key].length; i++) {
-                const imageCSS = 'img[alt*="' + ENTITY_REGEX[key][i] + '"]';
-                let element = await page.$(imageCSS);
-                if (element) {
-                    try {
-                        console.log("Found Image Tag, Trying to click...");
-                        //click on the image element with popup
-                        const [newPage] = await Promise.all([
-                            page.waitForEvent('popup', { timeout: 5000 }),
-                            page.click(imageCSS, { force: true, timeout: 2000 })
-                        ]);
-                        let pageUrl = newPage.url();
-                        if (pageUrl.includes(value) && isValidUrl(pageUrl)) {
-                            hrefs.push(pageUrl);
-                        }
-                        await newPage.close();
-                    }
-                    catch (error) {
-                        console.log(error);
-                    }
-                }
-            }
-            resolve(hrefs);
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-function crawl(url, proxy, level) {
+function crawl(url, proxy, level, url_status_map) {
     return new Promise(async (resolve, reject) => {
         console.log('Processing url: ' + url + ' level:' + level);
 
@@ -110,6 +147,12 @@ function crawl(url, proxy, level) {
         let browserContext = null;
         let statusCode = 200;
         const data = {};
+        const domain = getDomain(url)
+        console.log('url_status_map in crawl' + JSON.stringify(url_status_map, undefined, 2))
+        console.log('printing keys crawl: ')
+        for (let key of url_status_map.keys()) {
+            console.log(key);
+        }
         try {
             const options = {
                 locale: 'en-GB',
@@ -133,48 +176,20 @@ function crawl(url, proxy, level) {
             statusCode = response.status();
             if (statusCode !== 200) throw new Error(`${statusCode}`);
 
-            await page.on('dialog', async (dialog) => {
-                await dialog.dismiss();
-            });
-
             const chain = redirectionChain((new URL(url)).href, response);
             console.log("Generated Chain: ", chain);
 
-            let entities = {};
             await Promise.all([
-                await extractFromUrls(page, options)
-            ]).then(async (data) => {
-                entities = data[0];
-                for (const [key, value] of Object.entries(ENTITY_FORMATS)) {
-                    if (entities[key].length === 0) {
-                        await Promise.all(
-                            await fetchFromClick(key, value, page)
-                        ).then((hrefs) => {
-                            entities[key] = [...new Set(hrefs)];
-                        }).catch((message) => {
-                            console.log(message);
-                        })
-                    }
-                    else {
-                        entities[key] = [...new Set(entities[key])];
-                    }
-                }
-            }).catch((message) => {
+                await extractUrls(page, url_status_map, level)
+            ]).catch((message) => {
                 console.log(message);
             })
 
-            //modify entities
-            entities['app_store'] = [...new Set(entities['app_store'].concat(entities['apple_store']))];
-            entities['youtube'] = [...new Set(entities['youtube'].concat(entities['youtube_user']))];
-            delete entities['apple_store'];
-            delete entities['youtube_user'];
-            console.log(entities);
+            handleMapping(url_status_map, url, domain, level, true)
 
-            data['domain'] = (new URL(page.url())).hostname.replace('www.', '');
+            data['domain'] = domain;
             data['response'] = await page.content();
             data['redirection_chain'] = [...new Set(chain)];
-            data['entities'] = entities
-
             resolve(data);
 
         } catch (error) {
@@ -195,15 +210,15 @@ function crawl(url, proxy, level) {
     });
 }
 
-function processUrl(domain, proxy, level) {
+function processUrl(domain, proxy, level, url_status_map) {
     return new Promise(async (resolve, reject) => {
         await Promise.all([
-            crawl('https://' + domain, proxy, level)
+            crawl('https://' + domain, proxy, level, url_status_map)
         ]).then((response) => {
             resolve(response[0]);
         }).catch(async (status) => {
             await Promise.all([
-                crawl('http://' + domain, proxy, level)
+                crawl('http://' + domain, proxy, level, url_status_map)
             ]).then((response) => {
                 console.log("response[0] :" + response[0])
                 resolve(response[0]);
@@ -226,21 +241,42 @@ module.exports.main = async (event, context, callback) => {
     let statusCode = 200;
     let data = {};
     const raw_url = event.body["raw_url"]
+    const domain = getDomain(raw_url)
+    console.log('fetching urls for domain in main')
+    let url_status_map
+    try {
+        url_status_map = await getDomainUrls(domain);
+    } catch(err) {
+        callback(err, {
+            statusCode: 503
+        })
+        return
+    }
+    if(url_status_map.has(raw_url) && url_status_map.get(raw_url).status === true) {
+        callback('Url already processed', {
+            statusCode: 403,
+            headers: {
+                'Content-Type': 'text/plain'
+            },
+            body: 'Url already processed'
+        });
+        return
+    }
+    if(domain.startsWith('mailto:')) {
+        callback('Invalid Url', null)
+        return
+    }
     if(level === 0) {
         // for level 0 raw url is domain
         const domain = cleanDomain(raw_url);
         console.log('domain name' + domain)
-        if(domain.startsWith('mailto:')) {
-            callback('Invalid Url', null)
-            return
-        }
         await Promise.all([
-            processUrl('www.' + domain, proxy, level)
+            processUrl('www.' + domain, proxy, level, url_status_map)
         ]).then((response) => {
             data = response[0];
         }).catch(async (status) => {
             await Promise.all([
-                processUrl(domain, proxy, level)
+                processUrl(domain, proxy, level, url_status_map)
             ]).then((response) => {
                 data = response[0];
                 console.log(data)
@@ -251,7 +287,7 @@ module.exports.main = async (event, context, callback) => {
     } else if (level <= CONSTANTS.LEVEL_LIMIT){
         // for next level dont clean, dont process
         await Promise.all([
-            crawl(raw_url, proxy, level)
+            crawl(raw_url, proxy, level, url_status_map)
         ]).then((response) => {
             data = response[0];
             console.log(data)
