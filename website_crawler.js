@@ -4,9 +4,9 @@ const playwright = require('playwright');
 const db = require('./db')
 const _url = require('url');
 const isValidDomain = require('is-valid-domain')
+const fs =require('fs')
+const  { writePageContentToS3 } = require('./s3.js')
 
-const ENTITY_FORMATS = CONSTANTS.ENTITY_FORMATS
-const ENTITY_REGEX = CONSTANTS.ENTITY_REGEX
 
 function redirectionChain(url, response) {
     try{
@@ -51,59 +51,62 @@ function getDomain(url) {
 
 function getDomainUrls(domain) {
     console.log('domain to fetch urls: ' + domain)
-    const query = `select url_id, url, status from urls inner join crawl_status on urls.id=crawl_status.url_id where crawl_status.domain='${domain}'`
+    const query = `select id, domain, url, status from crawl_status_2 where domain='${domain}'`
     let url_status_map = new Map();
-    console.log('in getDomainUrls: ')
-    console.log('query: ' + query)
-    console.log('db object: ' + db)
-
     return new Promise((resolve, reject) => {
         db.query(query, (error, results, _) => {
             if (error) {
-                console.log('get domain result error: ')
-                console.log(error)
+                console.log(`getDomainUrl: ${error.message}`)
                 reject(error)
             } else {
-                console.log('get domain result: ')
                 results.forEach(function(row) {
-                    console.log(row.url, row.status, row.url_id)
+                    console.log(row.url, row.status)
                     url_status_map.set(row.url, {
                         status: row.status,
-                        url_id: row.url_id
+                        url: row.url,
+                        id: row.id
                     });
                 });
                 for (const [url, { url_id, status }] of url_status_map.entries()) {
                     console.log(`URL: ${url}, URL ID: ${url_id}, Status: ${status}`);
                 }
-                console.log('url status map length ' + url_status_map.size)
                 resolve(url_status_map)
             }
         });
     });
 }
 
+function writeAsJson(data) {
+    return new Promise(async (resolve, reject) => {
+        fs.writeFile('out.json', JSON.stringify(data), err => {
+            if(err){
+                reject(err)
+            }
+            console.log('written to json')
+            resolve()
+        })
+    });
+}
+
 function handleMapping(url_status_map, url, domain, level, status) {
-    console.log('printing handlemapping: ')
-    for (const [url, { url_id, status }] of url_status_map.entries()) {
-        console.log(`URL: ${url}, URL ID: ${url_id}, Status: ${status}`);
-    }
     console.log('url: '+ url + ' map has ' + url_status_map.has(url))
     if(url_status_map.has(url)) {
         console.log('here in url_status_map.has(url)')
         const value = url_status_map.get(url)
-        console.log('value ' + value)
-        console.log('url status map ' + url + ':' + value['status'] + " : " + value.url_id)
+        console.log('value ' + value + 'value_url ' + value.url + 'value_status ' + value.status)
         if(value.status === false && status === true) {
-            db.query(`update crawl_status set status=true where domain='${domain}' and url_id=${value.url_id}`)
+            db.query(`update crawl_status_2 set status=true where domain='${domain}' and url='${value.url}'`)
         } else {
             console.log(`url ${url} already crawled`)
-            throw Error(`url ${url} already crawled`)
         }
+        return url_status_map[url].id
     } else {
-        db.query(`insert into urls (url) values ('${url}')`, (err, res, _) => {
-            if(err) throw err
-            const url_id = res.insertId
-            db.query(`insert into crawl_status (domain, url_id, status, level) values ('${domain}', ${url_id}, ${status}, ${level})`)
+        db.query(`insert into crawl_status_2 (domain, url, level, status) values ('${domain}', '${url}', ${level}, ${status})`, (err, res) => {
+            if(err){
+                throw new Error(err.message)
+            } else {
+                return res.insertId
+            }
         })
     }
 }
@@ -131,6 +134,7 @@ function extractUrls(page, url_status_map, level) {
                 console.log("valid url: " + elementHrefs[i])
                 handleMapping(url_status_map, elementHrefs[i], domain, level+1, false)
             }
+            resolve("Extracted urls")
         }
         catch (error) {
             reject(error);
@@ -185,11 +189,21 @@ function crawl(url, proxy, level, url_status_map) {
                 console.log(message);
             })
 
-            handleMapping(url_status_map, url, domain, level, true)
+            const insertId = handleMapping(url_status_map, url, domain, level, true)
 
             data['domain'] = domain;
             data['response'] = await page.content();
             data['redirection_chain'] = [...new Set(chain)];
+
+            await Promise.all([
+                // await writeAsJson(data)
+                await writePageContentToS3(JSON.stringify(data), domain, level, `${insertId}_${new Date().toISOString()}.json`)
+            ]).then((msg) => {
+                console.log('written to json')
+            }).catch((err) => {
+                console.log(err);
+            })
+
             resolve(data);
 
         } catch (error) {
@@ -262,6 +276,7 @@ module.exports.main = async (event, context, callback) => {
         });
         return
     }
+    // check if domain is invalid
     if(domain.startsWith('mailto:')) {
         callback('Invalid Url', null)
         return
