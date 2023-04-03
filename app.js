@@ -12,7 +12,6 @@ const callback = (error, response) => {
         console.log("Success Here")
         console.log(response);
     }
-    process.exit(0)
 };
 
 main(event, context, callback);

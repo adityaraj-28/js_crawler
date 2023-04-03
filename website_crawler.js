@@ -93,13 +93,13 @@ function handleMapping(url_status_map, url, domain, level, status) {
     if(url_status_map.has(url)) {
         console.log('here in url_status_map.has(url)')
         const value = url_status_map.get(url)
-        console.log('value ' + value + 'value_url ' + value.url + 'value_status ' + value.status)
+        console.log('value_url ' + value.url + 'value_status ' + value.status + 'id ' + value.id)
         if(value.status === false && status === true) {
             db.query(`update crawl_status_2 set status=true where domain='${domain}' and url='${value.url}'`)
         } else {
             console.log(`url ${url} already crawled`)
         }
-        return url_status_map[url].id
+        return value.id
     } else {
         db.query(`insert into crawl_status_2 (domain, url, level, status) values ('${domain}', '${url}', ${level}, ${status})`, (err, res) => {
             if(err){
@@ -179,6 +179,14 @@ function crawl(url, proxy, level, url_status_map) {
             }
             statusCode = response.status();
             if (statusCode !== 200) throw new Error(`${statusCode}`);
+
+            url = page.url()
+
+            if(url_status_map.has(url) && url_status_map.get(url).status === true){
+                console.log('Page already processed')
+                reject('Page already processed')
+                return
+            }
 
             const chain = redirectionChain((new URL(url)).href, response);
             console.log("Generated Chain: ", chain);
@@ -318,5 +326,8 @@ module.exports.main = async (event, context, callback) => {
         },
         body: data
     };
-    callback(null, response);
+    if(response.statusCode === 503)
+        callback(response, null)
+    else
+        callback(null, response);
 };
