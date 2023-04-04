@@ -6,6 +6,7 @@ const _url = require('url');
 const isValidDomain = require('is-valid-domain')
 const fs =require('fs')
 const  { writePageContentToS3 } = require('./s3.js')
+const path = require('path')
 
 
 function redirectionChain(url, response) {
@@ -25,24 +26,25 @@ function redirectionChain(url, response) {
 
 function isValidUrl(url) {
     if(url.startsWith('#')) return false
-    let invalidRegex = CONSTANTS.ENTITY_EXCLUSION
-    for(let x in invalidRegex){
-        if(url.includes(invalidRegex[x])){
-            return false
-        }
-    }
+    const ext = path.extname(url)
+    if(ext !== '' && ext !== '.html' && ext !== '.htm')
+        return false
     const emojiRegex = /\p{Extended_Pictographic}/ug
     return !emojiRegex.test(url);
 }
 
 function getDomain(url) {
+    console.log("getDomain url: " + url)
     let domain
     try {
         domain = (new URL(url)).hostname.replace('www.', '');
+        console.log("domain set " + domain)
     } catch(err){
         if(isValidDomain(url)) {
             domain = url
+            console.log("domain set after err " + domain)
         } else {
+            console.log("err thrown from getDomain")
             throw err
         }
     }
@@ -50,26 +52,24 @@ function getDomain(url) {
 }
 
 function getDomainUrls(domain) {
-    console.log('domain to fetch urls: ' + domain)
-    const query = `select id, domain, url, status from crawl_status_2 where domain='${domain}'`
-    let url_status_map = new Map();
-    return new Promise((resolve, reject) => {
+    console.log("in get domain urls")
+    return new Promise(async (resolve, reject) => {
+        console.log('domain to fetch urls: ' + domain)
+        const query = `select id, domain, url, status from crawl_status_2 where domain='${domain}'`
+        console.log("get domain query " + query)
         db.query(query, (error, results, _) => {
             if (error) {
                 console.log(`getDomainUrl: ${error.message}`)
                 reject(error)
             } else {
+                const url_status_map = new Map()
                 results.forEach(function(row) {
                     console.log(row.url, row.status)
                     url_status_map.set(row.url, {
                         status: row.status,
-                        url: row.url,
                         id: row.id
                     });
                 });
-                for (const [url, { url_id, status }] of url_status_map.entries()) {
-                    console.log(`URL: ${url}, URL ID: ${url_id}, Status: ${status}`);
-                }
                 resolve(url_status_map)
             }
         });
@@ -154,11 +154,7 @@ function crawl(url, proxy, level, url_status_map) {
         let statusCode = 200;
         const data = {};
         const domain = getDomain(url)
-        console.log('url_status_map in crawl' + JSON.stringify(url_status_map, undefined, 2))
         console.log('printing keys crawl: ')
-        for (let key of url_status_map.keys()) {
-            console.log(key);
-        }
         try {
             const options = {
                 locale: 'en-GB',
@@ -266,16 +262,14 @@ module.exports.main = async (event, context, callback) => {
     let data = {};
     const raw_url = event.body["raw_url"]
     const domain = getDomain(raw_url)
+    console.log("crawler input: " + domain, raw_url, level);
     console.log('fetching urls for domain in main')
-    let url_status_map
-    try {
-        url_status_map = await getDomainUrls(domain);
-    } catch(err) {
-        callback(err, {
-            statusCode: 503
-        })
-        return
+    const url_status_map = await getDomainUrls(domain)
+    console.log("fetched url status map")
+    for (const [url, { id, status }] of url_status_map.entries()) {
+        console.log(`main URL: ${url}, URL ID: ${id}, Status: ${status}`);
     }
+
     if(url_status_map.has(raw_url) && url_status_map.get(raw_url).status === true) {
         callback('Url already processed', {
             statusCode: 403,
@@ -293,7 +287,7 @@ module.exports.main = async (event, context, callback) => {
     }
     if(level === 0) {
         // for level 0 raw url is domain
-        const domain = cleanDomain(raw_url);
+        const domain = await cleanDomain(raw_url);
         console.log('domain name ' + domain)
         await Promise.all([
             processUrl('www.' + domain, proxy, level, url_status_map)
