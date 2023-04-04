@@ -76,6 +76,8 @@ function getDomainUrls(domain) {
     });
 }
 
+
+// used for testing purpose
 function writeAsJson(data) {
     return new Promise(async (resolve, reject) => {
         fs.writeFile('out.json', JSON.stringify(data), err => {
@@ -207,7 +209,7 @@ function crawl(url, proxy, level, url_status_map) {
                 // await writeAsJson(data)
                 await writePageContentToS3(JSON.stringify(data), domain, level, `${insertId}_${new Date().toISOString()}.json`)
             ]).then((msg) => {
-                console.log('written to json')
+                console.log('saved to s3')
             }).catch((err) => {
                 console.log(err);
             })
@@ -292,7 +294,7 @@ module.exports.main = async (event, context, callback) => {
     if(level === 0) {
         // for level 0 raw url is domain
         const domain = cleanDomain(raw_url);
-        console.log('domain name' + domain)
+        console.log('domain name ' + domain)
         await Promise.all([
             processUrl('www.' + domain, proxy, level, url_status_map)
         ]).then((response) => {
@@ -331,3 +333,7 @@ module.exports.main = async (event, context, callback) => {
     else
         callback(null, response);
 };
+
+module.exports = {
+    website_crawler: module.exports.main
+}
