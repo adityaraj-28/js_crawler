@@ -78,9 +78,9 @@ function getDomainUrls(domain) {
 
 
 // used for testing purpose
-function writeAsJson(data) {
+function writeAsJson(data, filename) {
     return new Promise(async (resolve, reject) => {
-        fs.writeFile('out.json', JSON.stringify(data), err => {
+        fs.writeFile(filename, JSON.stringify(data), err => {
             if(err){
                 reject(err)
             }
@@ -145,6 +145,7 @@ function extractUrls(page, url_status_map, level) {
                 if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
                 console.log("valid url: " + elementHrefs[i])
                 handleMapping(url_status_map, elementHrefs[i], domain, level+1, false)
+                console.log('mapping handled for extracted domain')
             }
             resolve("Extracted urls")
         }
@@ -213,7 +214,7 @@ function crawl(url, proxy, level, url_status_map) {
             data['redirection_chain'] = [...new Set(chain)];
 
             await Promise.all([
-                await writeAsJson(data)
+                await writeAsJson(data, `${insertId}_${new Date().toISOString()}.json`)
                 // await writePageContentToS3(JSON.stringify(data), domain, level, `${insertId}_${new Date().toISOString()}.json`)
             ]).then((msg) => {
                 console.log('saved to s3')
@@ -266,7 +267,7 @@ function cleanDomain(domain){
     }
     return domain
 }
-module.exports.main = async (event, context, callback) => {
+async function website_crawler (event, context, callback) {
     const proxy = event.body["proxy"];
     const level = context["level"]
     let statusCode = 200;
@@ -337,8 +338,18 @@ module.exports.main = async (event, context, callback) => {
         callback(response, null)
     else
         callback(null, response);
-};
-
-module.exports = {
-    website_crawler: module.exports.main
 }
+
+function website_crawler_sync(event, context) {
+    return new Promise((resolve, reject) => {
+        website_crawler(event, context, (err, res) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(res);
+            }
+        });
+    });
+}
+
+module.exports = website_crawler_sync
