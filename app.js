@@ -27,8 +27,7 @@ async function fetch_unprocessed_urls(level) {
 async function get_root_domain(){
     return new Promise((resolve, reject) => {
         // todo: remove limit after testing
-        db.query(`select name from domains left outer join crawl_status_2 on domains.name = crawl_status_2.domain where domain is NULL LIMIT 3`, (err, res) => {
-            console.log(res.length)
+        db.query(`select name from domains left outer join crawl_status_2 on domains.name = crawl_status_2.domain where domain is NULL LIMIT 1`, (err, res) => {
             if(err){
                 console.log('error fetching root domain')
                 process.exit(0)
@@ -60,7 +59,7 @@ async function processRootDomains() {
 }
 
 async function run() {
-    // await processRootDomains();
+    await processRootDomains();
     let level = 1
     while(1){
         console.log("here, start level: " + level)
@@ -71,7 +70,7 @@ async function run() {
         console.log("rul " + JSON.stringify(raw_url_list))
         if(raw_url_list.length === 0) {
             level++;
-            return
+            continue
         }
         for(const url of raw_url_list){
             console.log("rul value " + url)
@@ -86,6 +85,7 @@ async function run() {
         }
         console.log("here, level: " + level)
     }
+    db.end()
 }
 
 run()
