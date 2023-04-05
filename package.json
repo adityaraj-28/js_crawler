@@ -2,6 +2,9 @@
   "name": "puppeter",
   "version": "1.0.0",
   "type": "commonjs",
+  "scripts": {
+    "dev": "node app.js"
+  },
   "dependencies": {
     "aws-sdk": "^2.1348.0",
     "is-valid-domain": "^0.1.6",

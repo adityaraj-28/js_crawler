@@ -91,13 +91,17 @@ function writeAsJson(data) {
 }
 
 function handleMapping(url_status_map, url, domain, level, status) {
+    console.log('in handle mapping printing map')
     console.log('url: '+ url + ' map has ' + url_status_map.has(url))
     if(url_status_map.has(url)) {
         console.log('here in url_status_map.has(url)')
+        console.log('check instance' + (url_status_map instanceof Map))
         const value = url_status_map.get(url)
-        console.log('value_url ' + value.url + 'value_status ' + value.status + 'id ' + value.id)
-        if(value.status === false && status === true) {
-            db.query(`update crawl_status_2 set status=true where domain='${domain}' and url='${value.url}'`)
+        console.log('value_status ' + value.status + 'id ' + value.id)
+        if(value.status === 0 && status === true) {
+            const update_query = `update crawl_status_2 set status=true where domain='${domain}' and url='${url}'`
+            console.log('update_query'+ update_query)
+            db.query(update_query)
         } else {
             console.log(`url ${url} already crawled`)
         }
@@ -121,18 +125,24 @@ function extractUrls(page, url_status_map, level) {
             const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
             let domain = getDomain(page.url())
 
-            const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => tag.getAttribute('href')).filter(href => href !== '/')))];
-            elementHrefs.push(page.url())
+            const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => {
+                let attr = tag.getAttribute('href')
+                const hash_index = attr.indexOf('#')
+                if(hash_index !== -1){
+                    attr = attr.substring(0, hash_index)
+                }
+                return attr
+            }).filter(href => href !== '/' && href !== '')))];
             // todo: remove limit
-            for (let i = 0; i < elementHrefs.length && i<5; i++) {
+            for (let i = 0; i < elementHrefs.length; i++) {
                 console.log("Processing url: " + elementHrefs[i]);
-                if(!isValidUrl(elementHrefs[i])) continue
                 if(elementHrefs[i].startsWith("http")){
                     const nested_url_domain = (new URL(elementHrefs[i])).hostname.replace('www.', '');
                     if(nested_url_domain !== domain) continue
                 } else {
                     elementHrefs[i] = base_url + elementHrefs[i]
                 }
+                if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
                 console.log("valid url: " + elementHrefs[i])
                 handleMapping(url_status_map, elementHrefs[i], domain, level+1, false)
             }
@@ -196,14 +206,15 @@ function crawl(url, proxy, level, url_status_map) {
             })
 
             const insertId = handleMapping(url_status_map, url, domain, level, true)
-
+            console.log('insert id : ' + insertId)
             data['domain'] = domain;
+            data['url'] = url;
             data['response'] = await page.content();
             data['redirection_chain'] = [...new Set(chain)];
 
             await Promise.all([
-                // await writeAsJson(data)
-                await writePageContentToS3(JSON.stringify(data), domain, level, `${insertId}_${new Date().toISOString()}.json`)
+                await writeAsJson(data)
+                // await writePageContentToS3(JSON.stringify(data), domain, level, `${insertId}_${new Date().toISOString()}.json`)
             ]).then((msg) => {
                 console.log('saved to s3')
             }).catch((err) => {
@@ -233,7 +244,7 @@ function crawl(url, proxy, level, url_status_map) {
 function processUrl(domain, proxy, level, url_status_map) {
     return new Promise(async (resolve, reject) => {
         await Promise.all([
-            crawl('https://' + domain, proxy, level, url_status_map)
+            await crawl('https://' + domain, proxy, level, url_status_map)
         ]).then((response) => {
             resolve(response[0]);
         }).catch(async (status) => {
@@ -290,12 +301,12 @@ module.exports.main = async (event, context, callback) => {
         const domain = await cleanDomain(raw_url);
         console.log('domain name ' + domain)
         await Promise.all([
-            processUrl('www.' + domain, proxy, level, url_status_map)
+            await processUrl('www.' + domain, proxy, level, url_status_map)
         ]).then((response) => {
             data = response[0];
         }).catch(async (status) => {
             await Promise.all([
-                processUrl(domain, proxy, level, url_status_map)
+                await processUrl(domain, proxy, level, url_status_map)
             ]).then((response) => {
                 data = response[0];
                 console.log(data)
@@ -306,7 +317,7 @@ module.exports.main = async (event, context, callback) => {
     } else if (level <= CONSTANTS.LEVEL_LIMIT){
         // for next level dont clean, dont process
         await Promise.all([
-            crawl(raw_url, proxy, level, url_status_map)
+            await crawl(raw_url, proxy, level, url_status_map)
         ]).then((response) => {
             data = response[0];
             console.log(data)

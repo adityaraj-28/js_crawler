@@ -58,7 +58,7 @@ async function processRootDomains() {
 }
 
 async function run() {
-    // await processRootDomains();
+    await processRootDomains();
     let level = 1
     while(1){
         console.log("here, start level: " + level)
