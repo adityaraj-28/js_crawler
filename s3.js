@@ -17,17 +17,17 @@ async function writePageContentToS3(pageContent, domain, level, filename) {
     // Set the S3 key for the file based on the domain and level
     const s3Key = `domain/${domain}/level/${level}/${filename}`;
 
-    // s3.upload({
-    //     Bucket: 'website-crawler-dump-synaptic',
-    //     Key: s3Key,
-    //     Body: pageContent }, function (err, data) {
-    //         if (err) {
-    //             console.log("Error", err);
-    //         } if (data) {
-    //             console.log("Upload Success", data.Location);
-    //         }
-    //     }
-    // );
+    s3.upload({
+        Bucket: 'website-crawler-dump-synaptic',
+        Key: s3Key,
+        Body: pageContent }, function (err, data) {
+            if (err) {
+                console.log("Error", err);
+            } if (data) {
+                console.log("Upload Success", data.Location);
+            }
+        }
+    );
 
 }
 

@@ -95,7 +95,7 @@ function writeAsJson(data, filename) {
     });
 }
 
-function handleMapping(url_status_map, url, domain, level, status) {
+async function handleMapping(url_status_map, url, domain, level, status) {
     console.log('in handle mapping printing map')
     console.log('url: '+ url + ' map has ' + url_status_map.has(url))
     if(url_status_map.has(url)) {
@@ -148,7 +148,7 @@ function extractUrls(page, url_status_map, level) {
                 if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
                 elementHrefs[i] = addSlashInUrl(elementHrefs[i])
                 console.log("valid url: " + elementHrefs[i])
-                handleMapping(url_status_map, elementHrefs[i], domain, level+1, false)
+                await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, false)
                 console.log('mapping handled for extracted domain')
             }
             resolve("Extracted urls")
@@ -212,16 +212,22 @@ function crawl(url, proxy, level, url_status_map) {
                 console.log(message);
             })
 
-            const insertId = handleMapping(url_status_map, url, domain, level, true)
+            const insertId = await handleMapping(url_status_map, url, domain, level, true)
             console.log('insert id : ' + insertId)
             data['domain'] = domain;
             data['url'] = url;
             data['response'] = await page.content();
             data['redirection_chain'] = [...new Set(chain)];
 
+            let filename
+            if(insertId){
+                filename = `${domain}_${insertId}_${new Date().toISOString()}.json`
+            } else {
+                filename = `${domain}_${new Date().toISOString()}.json`
+            }
             await Promise.all([
-                await writeAsJson(data, `${insertId}_${new Date().toISOString()}.json`)
-                // await writePageContentToS3(JSON.stringify(data), domain, level, `${insertId}_${new Date().toISOString()}.json`)
+                await writeAsJson(data, filename)
+                // await writePageContentToS3(JSON.stringify(data), domain, level, `${domain}_${new Date().toISOString()}.json`)
             ]).then((msg) => {
                 console.log('saved to s3')
             }).catch((err) => {

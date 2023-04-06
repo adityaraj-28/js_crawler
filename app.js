@@ -5,7 +5,6 @@ const website_crawler_sync = require("./website_crawler");
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        // todo: remove limit after testing
         const query = `select domain, url from crawl_status_2 where level=${level} and status=false`
         db.query(query, (err, res) => {
             const results = []
@@ -27,7 +26,7 @@ async function fetch_unprocessed_urls(level) {
 async function get_root_domain(){
     return new Promise((resolve, reject) => {
         // todo: remove limit after testing
-        db.query(`select name from domains left outer join crawl_status_2 on domains.name = crawl_status_2.domain where domain is NULL LIMIT 1`, (err, res) => {
+        db.query(`select name from domains left outer join crawl_status_2 on domains.name = crawl_status_2.domain where domain is NULL LIMIT 3`, (err, res) => {
             if(err){
                 console.log('error fetching root domain')
                 process.exit(0)
