@@ -7,6 +7,7 @@ const isValidDomain = require('is-valid-domain')
 const fs =require('fs')
 const  { writePageContentToS3 } = require('./s3.js')
 const path = require('path')
+const log = require('./logger');
 
 function addSlashInUrl(url){
     if(url[url.length - 1] !== '/'){
@@ -24,7 +25,7 @@ function redirectionChain(url, response) {
         }
         return redirections;
     }catch(error){
-        console.log(error);
+        log.error('redirection chain generation error' + error);
         return [url];
     }
 }
@@ -39,17 +40,14 @@ function isValidUrl(url) {
 }
 
 function getDomain(url) {
-    console.log("getDomain url: " + url)
     let domain
     try {
         domain = (new URL(url)).hostname.replace('www.', '');
-        console.log("domain set " + domain)
     } catch(err){
         if(isValidDomain(url)) {
             domain = url
-            console.log("domain set after err " + domain)
         } else {
-            console.log("err thrown from getDomain")
+            log.error("getDomain error " + err)
             throw err
         }
     }
@@ -57,19 +55,18 @@ function getDomain(url) {
 }
 
 function getDomainUrls(domain) {
-    console.log("in get domain urls")
+    log.info(`Fetching urls for domain: ${domain}`)
     return new Promise(async (resolve, reject) => {
-        console.log('domain to fetch urls: ' + domain)
-        const query = `select id, domain, url, status from crawl_status_2 where domain='${domain}'`
-        console.log("get domain query " + query)
+        const query = `select id, domain, url, status from crawl_status where domain='${domain}'`
+        log.info('')
         db.query(query, (error, results, _) => {
+            log.info(`executing query: ${query}`)
             if (error) {
-                console.log(`getDomainUrl: ${error.message}`)
+                log.error(`getDomainUrl: ${error.message}`)
                 reject(error)
             } else {
                 const url_status_map = new Map()
                 results.forEach(function(row) {
-                    console.log(row.url, row.status)
                     url_status_map.set(row.url, {
                         status: row.status,
                         id: row.id
@@ -89,46 +86,47 @@ function writeAsJson(data, filename) {
             if(err){
                 reject(err)
             }
-            console.log('written to json')
+            log.info('written to json')
             resolve()
         })
     });
 }
 
-async function handleMapping(url_status_map, url, domain, level, status) {
-    console.log('in handle mapping printing map')
-    console.log('url: '+ url + ' map has ' + url_status_map.has(url))
+async function handleMapping(url_status_map, url, domain, level, status, chain=null) {
+    log.info(`Handling DB mapping for domain:${domain}, url:${url}`)
     if(url_status_map.has(url)) {
-        console.log('here in url_status_map.has(url)')
         const value = url_status_map.get(url)
-        console.log('value_status ' + value.status + 'id ' + value.id)
         if(value.status === 0 && status === true) {
-            const update_query = `update crawl_status_2 set status=true where id=${value.id}`
-            console.log('update_query'+ update_query)
+            const update_query = `update crawl_status set status=true, redirection_chain='${chain}' where id=${value.id}`
+            log.info('DB query'+ update_query)
             db.query(update_query)
         } else {
-            console.log(`url ${url} already crawled`)
+            log.info(`url ${url} already crawled`)
         }
         return value.id
     } else {
-        db.query(`insert into crawl_status_2 (domain, url, level, status) values ('${domain}', '${url}', ${level}, ${status})`, (err, res) => {
+        let query = `insert into crawl_status (domain, url, level, status) values ('${domain}', '${url}', ${level}, ${status})`
+        if(chain) {
+            query = `insert into crawl_status (domain, url, level, status, redirection_chain) values ('${domain}', '${url}', ${level}, ${status}, '${chain}')`
+        }
+        log.info(`DB query: ${query}`)
+        db.query(query, (err, res) => {
             if(err){
+                log.error(`Error inserting to DB: ${err.message}`)
                 throw new Error(err.message)
             }
-            console.log(res.insertId)
             return res.insertId
         })
     }
 }
 
 function extractUrls(page, url_status_map, level) {
+    let domain = getDomain(page.url())
     return new Promise(async (resolve, reject) => {
-        console.log("Processing from urls...");
+        log.info(`Extracting urls from ${page.url()}`);
         try {
             const parsed_url = _url.parse(page.url())
             const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
-            let domain = getDomain(page.url())
-
             const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => {
                 let attr = tag.getAttribute('href')
                 const hash_index = attr.indexOf('#')
@@ -138,7 +136,6 @@ function extractUrls(page, url_status_map, level) {
                 return attr
             }).filter(href => href !== '/' && href !== '')))];
             for (let i = 0; i < elementHrefs.length; i++) {
-                console.log("Processing url: " + elementHrefs[i]);
                 if(elementHrefs[i].startsWith("http")){
                     const nested_url_domain = (new URL(elementHrefs[i])).hostname.replace('www.', '');
                     if(nested_url_domain !== domain) continue
@@ -147,13 +144,14 @@ function extractUrls(page, url_status_map, level) {
                 }
                 if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
                 elementHrefs[i] = addSlashInUrl(elementHrefs[i])
-                console.log("valid url: " + elementHrefs[i])
+                log.info("valid url: " + elementHrefs[i])
                 await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, false)
-                console.log('mapping handled for extracted domain')
+
             }
             resolve("Extracted urls")
         }
         catch (error) {
+            db.query(`update crawl_status set log='${error.message}' where domain='${domain}' and url='${page.url()}'`)
             reject(error);
         }
     });
@@ -162,7 +160,7 @@ function extractUrls(page, url_status_map, level) {
 function crawl(url, proxy, level, url_status_map) {
     return new Promise(async (resolve, reject) => {
         url = addSlashInUrl(url)
-        console.log('Processing url: ' + url + ' level:' + level);
+        log.info('Processing url: ' + url + ' level:' + level);
 
         let browser = null;
         let page = null;
@@ -170,7 +168,6 @@ function crawl(url, proxy, level, url_status_map) {
         let statusCode = 200;
         const data = {};
         const domain = getDomain(url)
-        console.log('printing keys crawl: ')
         try {
             const options = {
                 locale: 'en-GB',
@@ -189,7 +186,7 @@ function crawl(url, proxy, level, url_status_map) {
                 response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
             }catch(error){
                 response = await page.waitForResponse(response => response.status() === 200)
-                console.log(error);
+                log.error(error);
             }
             statusCode = response.status();
             if (statusCode !== 200) throw new Error(`${statusCode}`);
@@ -198,46 +195,45 @@ function crawl(url, proxy, level, url_status_map) {
             url = addSlashInUrl(url)
 
             if(url_status_map.has(url) && url_status_map.get(url).status === true){
-                console.log('Page already processed')
+                log.info(`Page ${url} already processed`)
                 reject('Page already processed')
                 return
             }
 
             const chain = redirectionChain((new URL(url)).href, response);
-            console.log("Generated Chain: ", chain);
+            log.info("Generated Chain: ", chain);
 
             await Promise.all([
                 await extractUrls(page, url_status_map, level)
             ]).catch((message) => {
-                console.log(message);
+                log.error(message);
             })
 
-            const insertId = await handleMapping(url_status_map, url, domain, level, true)
-            console.log('insert id : ' + insertId)
+            const insertId = await handleMapping(url_status_map, url, domain, level, true, chain.join(', '))
             data['domain'] = domain;
             data['url'] = url;
             data['response'] = await page.content();
-            data['redirection_chain'] = [...new Set(chain)];
 
             let filename
             if(insertId){
-                filename = `${domain}_${insertId}_${new Date().toISOString()}.json`
+                filename = `${domain}_${insertId}_${new Date().toISOString()}.txt`
             } else {
-                filename = `${domain}_${new Date().toISOString()}.json`
+                filename = `${domain}_${new Date().toISOString()}.txt`
             }
             await Promise.all([
-                await writeAsJson(data, filename)
-                // await writePageContentToS3(JSON.stringify(data), domain, level, `${domain}_${new Date().toISOString()}.json`)
+                // await writeAsJson(data['response'], filename)
+                await writePageContentToS3(data['response'], domain, url, filename)
             ]).then((msg) => {
-                console.log('saved to s3')
+                log.info(`html for ${url} saved to s3`)
             }).catch((err) => {
-                console.log(err);
+                db.query(`update crawl_status set log='${err}' where domain='${domain}' and url='${url}'`)
+                log.error(err);
             })
 
             resolve(data);
 
         } catch (error) {
-            console.log(error);
+            log.error('error in crawl ' + error);
             reject(error.message);
         } finally {
             if (page !== null) {
@@ -263,9 +259,9 @@ function processUrl(domain, proxy, level, url_status_map) {
             await Promise.all([
                 crawl('http://' + domain, proxy, level, url_status_map)
             ]).then((response) => {
-                console.log("response[0] :" + response[0])
                 resolve(response[0]);
             }).catch((status) => {
+                log.error(`Process Url error: ${status}`)
                 reject(status);
             })
         });
@@ -285,13 +281,9 @@ async function website_crawler (event, context, callback) {
     let data = {};
     const raw_url = event.body["raw_url"]
     const domain = getDomain(raw_url)
-    console.log("crawler input: " + domain, raw_url, level);
-    console.log('fetching urls for domain in main')
+    log.info(`Running crawler for domain:${domain}, url:${raw_url}, level:${level}`)
     const url_status_map = await getDomainUrls(domain)
-    console.log("fetched url status map")
-    for (const [url, { id, status }] of url_status_map.entries()) {
-        console.log(`main URL: ${url}, URL ID: ${id}, Status: ${status}`);
-    }
+    log.info("fetched url status map")
 
     if(url_status_map.has(raw_url) && url_status_map.get(raw_url).status === true) {
         callback('Url already processed', {
@@ -311,7 +303,6 @@ async function website_crawler (event, context, callback) {
     if(level === 0) {
         // for level 0 raw url is domain
         const domain = await cleanDomain(raw_url);
-        console.log('domain name ' + domain)
         await Promise.all([
             processUrl('www.' + domain, proxy, level, url_status_map)
         ]).then((response) => {
@@ -321,8 +312,8 @@ async function website_crawler (event, context, callback) {
                 processUrl(domain, proxy, level, url_status_map)
             ]).then((response) => {
                 data = response[0];
-                console.log(data)
             }).catch((status) => {
+                log.error('website crawler error: ' + status)
                 statusCode = status;
             })
         });
@@ -332,8 +323,8 @@ async function website_crawler (event, context, callback) {
             crawl(raw_url, proxy, level, url_status_map)
         ]).then((response) => {
             data = response[0];
-            console.log(data)
         }).catch((status) => {
+            log.error('website crawler error: ' + status)
             statusCode = status;
         })
     }
@@ -355,6 +346,7 @@ function website_crawler_sync(event, context) {
     return new Promise((resolve, reject) => {
         website_crawler(event, context, (err, res) => {
             if (err) {
+                log.error('website_crawler_sync error' + err)
                 reject(err);
             } else {
                 resolve(res);
