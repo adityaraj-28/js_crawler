@@ -25,7 +25,7 @@ async function fetch_unprocessed_urls(level) {
 async function get_root_domain(){
     return new Promise((resolve, reject) => {
         // todo: remove limit after testing
-        db.query(`select name from domains left outer join crawl_status on domains.name = crawl_status.domain where domain is NULL LIMIT 3`, (err, res) => {
+        db.query(`select name from domains left outer join crawl_status on domains.name = crawl_status.domain where domain is NULL`, (err, res) => {
             if(err){
                 log.error('error fetching root domain, terminating app')
                 process.exit(0)
@@ -33,7 +33,6 @@ async function get_root_domain(){
             }
             const domains = []
             res.forEach(row => {
-                console.log(row.name)
                 domains.push(row.name)
             })
             resolve(domains)
@@ -45,20 +44,19 @@ async function processRootDomains() {
     log.info('processing root domains')
     const root_domains = await get_root_domain();
     for (const domain of root_domains) {
-        console.log(domain);
         const event = {body: {raw_url: domain}};
         const context = {level: 0};
         try {
-            const res = await website_crawler_sync(event, context);
-            console.log(res.statusCode);
+            await website_crawler_sync(event, context);
         } catch (err) {
-            console.log(err);
+            log.error('error to process root domains: ' + err)
         }
     }
 }
 
 async function run() {
     log.info('=====started======')
+
     await processRootDomains();
     let level = 1
     while(1){
@@ -77,10 +75,11 @@ async function run() {
                 const res = await website_crawler_sync(event, context);
                 console.log(res)
             } catch (err) {
-                console.log(err)
+                log.error('website_crawler_sync error: ' + err)
             }
         }
     }
+    log.info("===ending===")
 }
 
 run()

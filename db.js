@@ -4,7 +4,7 @@ const log = require('./logger')
 const connection = mysql.createConnection({
     host: 'labs-core-rds.nvst-staging.com',
     user: 'root',
-    password: 'SynapticGGN9',
+    password: 'VyCloudno9db',
     database: 'meta_database_staging'
 });
 

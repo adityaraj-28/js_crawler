@@ -25,7 +25,7 @@ async function writePageContentToS3(pageContent, domain, url, filename) {
         Body: pageContent }, function (err, data) {
             if (err) {
                 db.query(`update crawl_status set log="can't upload to s3: ${err.name}" where domain='${domain}' and url='${url}'`)
-                log.error(`s3 upload error: ${err}`)
+                log.error(`s3 upload error for url ${url}: ${err}`)
             } if (data) {
                 db.query(`update crawl_status set s3_uri='${data.Location}' where domain='${domain}' and url='${url}'`, (err, result, fields) => {
                     if(err){

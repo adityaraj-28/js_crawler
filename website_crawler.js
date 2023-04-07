@@ -129,6 +129,7 @@ function extractUrls(page, url_status_map, level) {
             const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
             const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => {
                 let attr = tag.getAttribute('href')
+                console.log('attr: ' + attr)
                 const hash_index = attr.indexOf('#')
                 if(hash_index !== -1){
                     attr = attr.substring(0, hash_index)
@@ -151,7 +152,8 @@ function extractUrls(page, url_status_map, level) {
             resolve("Extracted urls")
         }
         catch (error) {
-            db.query(`update crawl_status set log='${error.message}' where domain='${domain}' and url='${page.url()}'`)
+            log.error(error)
+            db.query(`update crawl_status set log='${error.name}' where domain='${domain}' and url='${page.url()}'`)
             reject(error);
         }
     });
@@ -183,10 +185,10 @@ function crawl(url, proxy, level, url_status_map) {
             page = await browser.newPage(options);
             let response;
             try {
-                response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
+                response = await page.goto(url, {waitUntil: "networkidle", timeout: 10000 });
             }catch(error){
-                response = await page.waitForResponse(response => response.status() === 200)
-                log.error(error);
+                response = await page.waitForResponse(response => response.status() === 200, { timeout: 10000})
+                log.error(`for url: ${url}, error: ${error}`);
             }
             statusCode = response.status();
             if (statusCode !== 200) throw new Error(`${statusCode}`);
@@ -209,10 +211,11 @@ function crawl(url, proxy, level, url_status_map) {
                 log.error(message);
             })
 
-            const insertId = await handleMapping(url_status_map, url, domain, level, true, chain.join(', '))
+            const insertId = await handleMapping(url_status_map, url, domain, level, true, '[' + chain.join(', ') + ']')
             data['domain'] = domain;
             data['url'] = url;
             data['response'] = await page.content();
+            data['redirection_chain'] = chain
 
             let filename
             if(insertId){
@@ -224,7 +227,7 @@ function crawl(url, proxy, level, url_status_map) {
                 // await writeAsJson(data['response'], filename)
                 await writePageContentToS3(data['response'], domain, url, filename)
             ]).then((msg) => {
-                log.info(`html for ${url} saved to s3`)
+                log.info(`saving html for ${url} to s3`)
             }).catch((err) => {
                 db.query(`update crawl_status set log='${err}' where domain='${domain}' and url='${url}'`)
                 log.error(err);
