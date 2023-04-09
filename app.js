@@ -5,7 +5,7 @@ const log = require('./logger')
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from crawl_status where level=${level} and status=false`
+        const query = `select domain, url from crawl_status where level=${level} and status=false and domain='sapo.pt'`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -42,8 +42,10 @@ async function get_root_domain(){
 
 async function processRootDomains() {
     log.info('processing root domains')
-    const root_domains = await get_root_domain();
+    const root_domains = ['sapo.pt']
+    // const root_domains = await get_root_domain();
     for (const domain of root_domains) {
+        if(domain.includes(':')) continue
         const event = {body: {raw_url: domain}};
         const context = {level: 0};
         try {

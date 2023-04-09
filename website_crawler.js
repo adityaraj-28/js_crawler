@@ -32,6 +32,7 @@ function redirectionChain(url, response) {
 
 function isValidUrl(url) {
     if(url.startsWith('#')) return false
+    if(!url.startsWith('http')) return false
     const ext = path.extname(url)
     if(ext !== '' && ext !== '.html' && ext !== '.htm')
         return false
@@ -67,10 +68,12 @@ function getDomainUrls(domain) {
             } else {
                 const url_status_map = new Map()
                 results.forEach(function(row) {
-                    url_status_map.set(row.url, {
-                        status: row.status,
-                        id: row.id
-                    });
+                    if(!url_status_map.has(row.url) || (url_status_map.has(row.url) && url_status_map.get(row.url).status === 0)){
+                        url_status_map.set(row.url, {
+                            status: row.status,
+                            id: row.id
+                        });
+                    }
                 });
                 resolve(url_status_map)
             }
@@ -105,7 +108,10 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
             log.info('DB query'+ update_query)
             db.query(update_query)
         } else {
-            log.info(`url ${url} already crawled`)
+            if(value.status !== 0) {
+                log.info(`url ${url} already crawled`)
+                throw Error('URL already crawled')
+            }
         }
         return value.id
     } else {
@@ -116,7 +122,7 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
         log.info(`DB query: ${query}`)
         db.query(query, (err, res) => {
             if(err){
-                log.error(`Error inserting to DB: ${err.message}`)
+                log.error(`Error inserting to DB, url: ${url} : ${err.message}`)
                 throw new Error(err.message)
             }
             return res.insertId
@@ -141,18 +147,26 @@ function extractUrls(page, url_status_map, level, domain) {
                     attr = attr.substring(0, hash_index)
                 }
                 return attr
-            }).filter(href => href !== '/' && href !== '' && !href.startsWith('tel:'))))];
+            }).filter(href => {
+                if(href === '/' || href === '') return false
+                return !['ftp://', 'mailto:', 'tel:', 'sms:', 'data:', 'javascript:'].some(prefix => href.startsWith(prefix));
+
+            })))]
             for (let i = 0; i < elementHrefs.length; i++) {
                 if(elementHrefs[i].startsWith("http")){
                     const nested_url_domain = (new URL(elementHrefs[i])).hostname.replace('www.', '');
                     if(nested_url_domain !== domain) continue
                 } else {
-                    elementHrefs[i] = base_url + elementHrefs[i]
+                    elementHrefs[i] = _url.resolve(base_url, elementHrefs[i])
                 }
                 if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
                 elementHrefs[i] = addSlashInUrl(elementHrefs[i])
                 log.info("valid url: " + elementHrefs[i])
-                await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, false)
+                try {
+                    await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, false)
+                } catch(err){
+                    log.error(`handle mapping error, url: ${page.url()}, ${err}`)
+                }
 
             }
             resolve("Extracted urls")
@@ -208,6 +222,7 @@ function crawl(url, proxy, level, url_status_map) {
             }
 
             const chain = redirectionChain((new URL(url)).href, response);
+            chain.reverse()
             log.info("Generated Chain: ", chain);
 
             await Promise.all([
@@ -241,7 +256,7 @@ function crawl(url, proxy, level, url_status_map) {
             resolve(data);
 
         } catch (error) {
-            log.error('error in crawl ' + error);
+            log.error(`error in crawl, url: ${url}, ${error}`);
             reject(error.message);
         } finally {
             if (page !== null) {
@@ -303,11 +318,7 @@ async function website_crawler (event, context, callback) {
         });
         return
     }
-    // check if domain is invalid
-    if(domain.startsWith('mailto:')) {
-        callback('Invalid Url', null)
-        return
-    }
+
     if(level === 0) {
         // for level 0 raw url is domain
         const domain = await cleanDomain(raw_url);

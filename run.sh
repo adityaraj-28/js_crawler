@@ -6,10 +6,10 @@ FILE="out.txt"
 LAST_MODIFIED=$(stat -f "%m" $FILE)
 
 while true; do
-  sleep 30
+  sleep 120
   CURRENT_MODIFIED=$(stat -f "%m" $FILE)
   if [ $LAST_MODIFIED -eq $CURRENT_MODIFIED ]; then
-    echo "File not modified in the last 30 seconds. Terminating program."
+    echo "File not modified in the last 2 minutes. Terminating program."
     break
     exit
   fi
