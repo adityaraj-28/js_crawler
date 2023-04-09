@@ -80,9 +80,13 @@ function getDomainUrls(domain) {
 
 
 // used for testing purpose
-function writeAsJson(data, filename) {
+function writeAsJson(data, filename, domain) {
+    const directory = `./data/${domain}`
+    if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory);
+    }
     return new Promise(async (resolve, reject) => {
-        fs.writeFile(filename, JSON.stringify(data), err => {
+        fs.writeFile(`${directory}/${filename}`, JSON.stringify(data), err => {
             if(err){
                 reject(err)
             }
@@ -120,8 +124,7 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
     }
 }
 
-function extractUrls(page, url_status_map, level) {
-    let domain = getDomain(page.url())
+function extractUrls(page, url_status_map, level, domain) {
     return new Promise(async (resolve, reject) => {
         log.info(`Extracting urls from ${page.url()}`);
         try {
@@ -129,13 +132,16 @@ function extractUrls(page, url_status_map, level) {
             const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
             const elementHrefs = [...new Set(await page.$$eval('a', as => as.map(tag => {
                 let attr = tag.getAttribute('href')
+                if(attr === null){
+                    return ''
+                }
                 console.log('attr: ' + attr)
                 const hash_index = attr.indexOf('#')
                 if(hash_index !== -1){
                     attr = attr.substring(0, hash_index)
                 }
                 return attr
-            }).filter(href => href !== '/' && href !== '')))];
+            }).filter(href => href !== '/' && href !== '' && !href.startsWith('tel:'))))];
             for (let i = 0; i < elementHrefs.length; i++) {
                 if(elementHrefs[i].startsWith("http")){
                     const nested_url_domain = (new URL(elementHrefs[i])).hostname.replace('www.', '');
@@ -185,15 +191,14 @@ function crawl(url, proxy, level, url_status_map) {
             page = await browser.newPage(options);
             let response;
             try {
-                response = await page.goto(url, {waitUntil: "networkidle", timeout: 10000 });
+                response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
             }catch(error){
-                response = await page.waitForResponse(response => response.status() === 200, { timeout: 10000})
+                response = await page.waitForResponse(response => response.status() === 200, { timeout: 20000})
                 log.error(`for url: ${url}, error: ${error}`);
             }
             statusCode = response.status();
             if (statusCode !== 200) throw new Error(`${statusCode}`);
 
-            url = page.url()
             url = addSlashInUrl(url)
 
             if(url_status_map.has(url) && url_status_map.get(url).status === true){
@@ -206,7 +211,7 @@ function crawl(url, proxy, level, url_status_map) {
             log.info("Generated Chain: ", chain);
 
             await Promise.all([
-                await extractUrls(page, url_status_map, level)
+                await extractUrls(page, url_status_map, level, domain)
             ]).catch((message) => {
                 log.error(message);
             })
@@ -224,8 +229,8 @@ function crawl(url, proxy, level, url_status_map) {
                 filename = `${domain}_${new Date().toISOString()}.txt`
             }
             await Promise.all([
-                // await writeAsJson(data['response'], filename)
-                await writePageContentToS3(data['response'], domain, url, filename)
+                await writeAsJson(data['response'], filename, domain)
+                // await writePageContentToS3(data['response'], domain, url, filename)
             ]).then((msg) => {
                 log.info(`saving html for ${url} to s3`)
             }).catch((err) => {

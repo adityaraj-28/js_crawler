@@ -25,7 +25,7 @@ async function fetch_unprocessed_urls(level) {
 async function get_root_domain(){
     return new Promise((resolve, reject) => {
         // todo: remove limit after testing
-        db.query(`select name from domains left outer join crawl_status on domains.name = crawl_status.domain where domain is NULL`, (err, res) => {
+        db.query(`select name from domains left outer join crawl_status on domains.name = crawl_status.domain where domain is NULL LIMIT 100`, (err, res) => {
             if(err){
                 log.error('error fetching root domain, terminating app')
                 process.exit(0)
@@ -56,7 +56,6 @@ async function processRootDomains() {
 
 async function run() {
     log.info('=====started======')
-
     await processRootDomains();
     let level = 1
     while(1){
