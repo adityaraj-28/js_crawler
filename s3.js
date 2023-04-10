@@ -1,6 +1,7 @@
 const AWS = require('aws-sdk');
 const db = require('./db')
 const log = require('./logger')
+const constants = require('./constants')
 
 const credentials = new AWS.SharedIniFileCredentials({profile: 'default'});
 AWS.config.credentials = credentials;
@@ -17,7 +18,10 @@ const s3 = new AWS.S3({
 // Define the function to write the page content to an S3 file
 async function writePageContentToS3(pageContent, domain, url, filename) {
     // Set the S3 key for the file based on the domain and level
-    const s3Key = `${domain}/${filename}`;
+    let env = process.env.ENVIRONMENT
+    if(env == null || !Object.values(constants.ENV).includes(env))
+        env = 'dev'
+    const s3Key = `${env}/${domain}/${filename}`;
 
     s3.upload({
         Bucket: 'website-crawler-dump-synaptic',
