@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
-node app.js  & my_prog_pid="$!" | tee out.txt
+limit=${1:-100}
+offset=${2:-0}
+echo $limit
+echo $offset
+node app.js $((limit)) $((offset))  & my_prog_pid="$!" | tee out.txt
 echo $my_prog_pid
 FILE="out.txt"
 LAST_MODIFIED=$(stat -f "%m" $FILE)

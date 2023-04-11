@@ -43,32 +43,6 @@ function isValidUrl(url) {
     return !emojiRegex.test(url);
 }
 
-function getDomainUrls(domain) {
-    log.info(`Fetching urls for domain: ${domain}`)
-    return new Promise(async (resolve, reject) => {
-        const query = `select id, domain, url, status from crawl_status_2 where domain='${domain}'`
-        log.info('')
-        db.query(query, (error, results, _) => {
-            log.info(`executing query: ${query}`)
-            if (error) {
-                log.error(`getDomainUrl: ${error.message}`)
-                reject(error)
-            } else {
-                const url_status_map = new Map()
-                results.forEach(function(row) {
-                    if(!url_status_map.has(row.url) || (url_status_map.has(row.url) && url_status_map.get(row.url).status !== 1 && row.status === 1)){
-                        url_status_map.set(row.url, {
-                            status: row.status,
-                            id: row.id
-                        });
-                    }
-                });
-                resolve(url_status_map)
-            }
-        });
-    });
-}
-
 
 // used for testing purpose
 function writeAsJson(data, filename, domain) {
@@ -149,9 +123,11 @@ function extractUrls(page, url_status_map, level, domain) {
                     elementHrefs[i] = _url.resolve(base_url, elementHrefs[i])
                 }
                 if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
-                valid_link_count++
-                if(valid_link_count > 20) break
                 elementHrefs[i] = addSlashInUrl(elementHrefs[i])
+                if(url_status_map.has(elementHrefs[i])) continue
+                valid_link_count++
+                // todo: remove this in staging
+                if(valid_link_count > 20) break
                 log.info("valid url: " + elementHrefs[i])
                 try {
                     await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, 0)
@@ -233,7 +209,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
 
             const chain = redirectionChain((new URL(url)).href, response);
             chain.reverse()
-            log.info("Generated Chain: ", chain);
+            log.info("Generated Chain: ", chain.join(','));
 
             const insertId = await handleMapping(url_status_map, url, domain, level, 1, '[' + chain.join(', ') + ']')
             data['domain'] = domain;
@@ -272,11 +248,20 @@ function crawl(url, proxy, level, url_status_map, domain) {
             })
 
             resolve(data);
-
         } catch (error) {
             log.error(`error in crawl, url: ${url}, ${error}`);
-            if(url_status_map.has(url)){
+            if(url_status_map.has(url) && error.message !== 'URL already crawled') {
                 const query = `update crawl_status_2 set status=-1, log='${error.toString().slice(0, 800)}' where domain='${domain}' and url='${url}'`;
+                db.query(query, (err, result, fields) => {
+                    if(err){
+                        log.error(`${query}, error: ${err}`)
+                    } else {
+                        log.info(`${query}, success`)
+                    }
+                })
+            }
+            else if(!url_status_map.has(url)){
+                const query = `insert into crawl_status_2 (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, log='${error.toString().slice(0, 800)}')`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
@@ -325,7 +310,7 @@ function cleanDomain(domain){
     }
     return domain
 }
-async function website_crawler (event, callback) {
+async function website_crawler (event, url_status_map, callback) {
     const proxy = event.body["proxy"];
     const level = event.body["level"];
     const url = event.body["url"]
@@ -333,7 +318,6 @@ async function website_crawler (event, callback) {
     let statusCode = 200;
     let data = {};
     log.info(`Running crawler for domain:${domain}, url:${url}, level:${level}`)
-    const url_status_map = await getDomainUrls(domain)
     log.info("fetched url status map")
 
     if(url_status_map.has(url) && url_status_map.get(url).status === 1) {
@@ -388,9 +372,9 @@ async function website_crawler (event, callback) {
         callback(null, response);
 }
 
-function website_crawler_sync(event) {
+function website_crawler_sync(event, url_status_map) {
     return new Promise((resolve, reject) => {
-        website_crawler(event, (err, res) => {
+        website_crawler(event, url_status_map, (err, res) => {
             if (err) {
                 log.error('website_crawler_sync error' + err)
                 reject(err);
