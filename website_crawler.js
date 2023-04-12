@@ -128,7 +128,7 @@ function extractUrls(page, url_status_map, level, domain) {
                 if(url_status_map.has(elementHrefs[i])) continue
                 valid_link_count++
                 // todo: remove this in staging
-                // if(valid_link_count > 3) break
+                if(valid_link_count > 6) break
                 if(validLinkSet.has(elementHrefs[i])) continue
                 else validLinkSet.add(elementHrefs[i])
                 log.info("valid url: " + elementHrefs[i])
