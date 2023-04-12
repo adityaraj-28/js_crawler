@@ -3,11 +3,11 @@ const CONSTANTS = require("./constants.js");
 const playwright = require('playwright');
 const db = require('./db')
 const _url = require('url');
-const isValidDomain = require('is-valid-domain')
 const fs =require('fs')
 const  { writePageContentToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
+const https = require('https')
 
 function addSlashInUrl(url){
     if(url[url.length - 1] !== '/'){
@@ -62,11 +62,11 @@ function writeAsJson(data, filename, domain) {
 }
 
 async function handleMapping(url_status_map, url, domain, level, status, chain=null) {
-    log.info(`Handling DB mapping for domain:${domain}, url:${url}`)
+    log.info(`Handling DB mapping for domain: ${domain}, url:${url}`)
     if(url_status_map.has(url)) {
         const value = url_status_map.get(url)
         if(value.status !== 1 && status === 1) {
-            const update_query = `update crawl_status_2 set log='', status=1, redirection_chain='${chain}' where id=${value.id}`
+            const update_query = `update crawl_status_2 set log=NULL, status=1, redirection_chain='${chain}' where id=${value.id}`
             log.info('DB query'+ update_query)
             db.query(update_query)
         } else {
@@ -127,7 +127,7 @@ function extractUrls(page, url_status_map, level, domain) {
                 if(url_status_map.has(elementHrefs[i])) continue
                 valid_link_count++
                 // todo: remove this in staging
-                if(valid_link_count > 20) break
+                if(valid_link_count > 3) break
                 log.info("valid url: " + elementHrefs[i])
                 try {
                     await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, 0)
@@ -150,6 +150,28 @@ function extractUrls(page, url_status_map, level, domain) {
             reject(error);
         }
     });
+}
+
+function downloadImages(page, url, domain) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const imgElements = await page.$$('img');
+            for (const imgElement of imgElements) {
+                const imageUrl = await imgElement.getAttribute('src');
+                const filename = `${domain}_${path.basename(imageUrl)}`;
+                https.get(imageUrl, { timeout: 5000}, (response) => {
+                    response.pipe(fs.createWriteStream(filename));
+                }).on('error', (err) => {
+                    console.error(`error downloading image ${imageUrl}, ${err}`);
+                });
+            }
+        } catch(err){
+            log.error(`error to fetch img tags, url: ${url}, ${err}`)
+            reject(`Image Download failed for ${url}`)
+            return
+        }
+        resolve(`Downloaded images for ${url}`)
+    })
 }
 
 function crawl(url, proxy, level, url_status_map, domain) {
@@ -206,6 +228,8 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 reject('Page already processed')
                 return
             }
+
+            await downloadImages(page, url, domain).then(res => log.info(res)).catch(err => log.error(err))
 
             const chain = redirectionChain((new URL(url)).href, response);
             chain.reverse()

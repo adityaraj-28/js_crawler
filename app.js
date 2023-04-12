@@ -5,7 +5,7 @@ const log = require('./logger')
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from crawl_status_2 where level=${level} and status=0`
+        const query = `select domain, url from crawl_status_2 where level=${level} and status=0 and domain='1000museums.com'`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -46,12 +46,14 @@ async function get_root_domain(){
 
 async function processRootDomains() {
     log.info('processing root domains')
-    const root_domains = await get_root_domain();
+    // const root_domains = await get_root_domain();
+    const root_domains = ['1000museums.com']
     for (const domain of root_domains) {
         if(domain.includes(':')) continue
+        const url_status_map = await getDomainUrls(domain)
         const event = {body: {domain: domain, level: 0}};
         try {
-            await website_crawler_sync(event, new Map());
+            await website_crawler_sync(event, url_status_map);
         } catch (err) {
             log.error('error to process root domains: ' + err)
         }
@@ -98,11 +100,12 @@ async function run() {
             level++;
             break
         }
+
         for(const domain_url of domain_url_list){
             const event = {body: {url: domain_url.url, domain: domain_url.domain, level: level}};
             const url_status_map = await getDomainUrls(domain_url.domain)
             try {
-                if(url_status_map.has(domain_url.url)) continue
+                if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) continue
                 // -2 to mark that code has touched this url
                 const query = `update crawl_status_2 set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
                 db.query(query, (err, res, fields) => {
@@ -118,6 +121,7 @@ async function run() {
             } catch (err) {
                 log.error('website_crawler_sync error: ' + err)
             }
+            break
         }
     }
     log.info("===ending===")
