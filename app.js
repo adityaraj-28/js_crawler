@@ -1,3 +1,4 @@
+'use strict';
 const db = require("./db");
 const { LEVEL_LIMIT } = require("./constants");
 const website_crawler_sync = require("./website_crawler");
@@ -121,7 +122,6 @@ async function run() {
             } catch (err) {
                 log.error('website_crawler_sync error: ' + err)
             }
-            break
         }
     }
     log.info("===ending===")

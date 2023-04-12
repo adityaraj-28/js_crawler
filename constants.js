@@ -6,5 +6,6 @@ module.exports = {
     ENV: {
         DEV: 'dev',
         STAGING: 'staging'
-    }
+    },
+    S3_BUCKET_NAME: 'website-crawler-dump-synaptic'
 }

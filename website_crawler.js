@@ -4,7 +4,7 @@ const playwright = require('playwright');
 const db = require('./db')
 const _url = require('url');
 const fs =require('fs')
-const  { writePageContentToS3 } = require('./s3.js')
+const  { writePageContentToS3, uploadImageToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
 const https = require('https')
@@ -115,6 +115,7 @@ function extractUrls(page, url_status_map, level, domain) {
 
             })))]
             let valid_link_count = 0
+            const validLinkSet = new Set()
             for (let i = 0; i < elementHrefs.length; i++) {
                 if(elementHrefs[i].startsWith("http")){
                     const nested_url_domain = (new URL(elementHrefs[i])).hostname.split('.').slice(-2).join('.')
@@ -127,8 +128,11 @@ function extractUrls(page, url_status_map, level, domain) {
                 if(url_status_map.has(elementHrefs[i])) continue
                 valid_link_count++
                 // todo: remove this in staging
-                if(valid_link_count > 3) break
+                // if(valid_link_count > 3) break
+                if(validLinkSet.has(elementHrefs[i])) continue
+                else validLinkSet.add(elementHrefs[i])
                 log.info("valid url: " + elementHrefs[i])
+
                 try {
                     await handleMapping(url_status_map, elementHrefs[i], domain, level + 1, 0)
                 } catch(err){
@@ -152,17 +156,25 @@ function extractUrls(page, url_status_map, level, domain) {
     });
 }
 
-function downloadImages(page, url, domain) {
+function downloadImages(page, insertId, url, domain) {
     return new Promise(async (resolve, reject) => {
         try {
             const imgElements = await page.$$('img');
             for (const imgElement of imgElements) {
                 const imageUrl = await imgElement.getAttribute('src');
-                const filename = `${domain}_${path.basename(imageUrl)}`;
+                const filename = path.basename(imageUrl);
+
                 https.get(imageUrl, { timeout: 5000}, (response) => {
-                    response.pipe(fs.createWriteStream(filename));
+                    let chunks = [];
+                    response.on('data', (chunk) => {
+                        chunks.push(chunk);
+                    });
+                    response.on('end', () => {
+                        const buffer = Buffer.concat(chunks);
+                        uploadImageToS3(buffer, filename, domain, url, insertId)
+                    });
                 }).on('error', (err) => {
-                    console.error(`error downloading image ${imageUrl}, ${err}`);
+                    console.error(`Error downloading image ${imageUrl}, ${err}`);
                 });
             }
         } catch(err){
@@ -229,8 +241,6 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 return
             }
 
-            await downloadImages(page, url, domain).then(res => log.info(res)).catch(err => log.error(err))
-
             const chain = redirectionChain((new URL(url)).href, response);
             chain.reverse()
             log.info("Generated Chain: ", chain.join(','));
@@ -241,15 +251,9 @@ function crawl(url, proxy, level, url_status_map, domain) {
             data['response'] = await page.content();
             data['redirection_chain'] = chain
 
-            let filename
-            if(insertId){
-                filename = `${domain}_${insertId}_${new Date().toISOString()}.txt`
-            } else {
-                filename = `${domain}_${new Date().toISOString()}.txt`
-            }
             await Promise.all([
                 // await writeAsJson(data['response'], filename, domain)
-                await writePageContentToS3(data['response'], domain, url, filename)
+                await writePageContentToS3(JSON.stringify(data), domain, url, insertId)
             ]).then((msg) => {
                 log.info(`saving html for ${url} to s3`)
             }).catch((err) => {
@@ -264,6 +268,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 log.error(err);
             })
 
+            await downloadImages(page, insertId, url, domain).then(res => log.info(res)).catch(err => log.error(err))
 
             await Promise.all([
                 await extractUrls(page, url_status_map, level, domain)
