@@ -144,7 +144,7 @@ function extractUrls(page, url_status_map, level, domain) {
         }
         catch (error) {
             log.error(error)
-            const query = `update crawl_status_2 set status=-1, log='${error.name}' where domain='${domain}' and url='${page.url()}'`
+            const query = `update crawl_status_2 set status=-1, log="${error.name}" where domain='${domain}' and url='${page.url()}'`
             db.query(query, (err, result, fields) => {
                 if(err)
                     log.error(`${query}, error: ${err.toString().slice(0, 800)}`)
@@ -159,30 +159,45 @@ function extractUrls(page, url_status_map, level, domain) {
 function downloadImages(page, insertId, url, domain) {
     return new Promise(async (resolve, reject) => {
         try {
+            const parsed_url = _url.parse(page.url())
+            const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
             const imgElements = await page.$$('img');
+            const imageUrlSet = new Set()
             for (const imgElement of imgElements) {
-                const imageUrl = await imgElement.getAttribute('src');
-                const filename = path.basename(imageUrl);
+                let imageUrl = await imgElement.getAttribute('src');
+                if(imageUrlSet.has(imageUrl))
+                    continue
+                else
+                    imageUrlSet.add(imageUrl)
 
-                https.get(imageUrl, { timeout: 5000}, (response) => {
-                    let chunks = [];
-                    response.on('data', (chunk) => {
-                        chunks.push(chunk);
-                    });
-                    response.on('end', () => {
-                        const buffer = Buffer.concat(chunks);
-                        uploadImageToS3(buffer, filename, domain, url, insertId)
-                    });
-                }).on('error', (err) => {
-                    console.error(`Error downloading image ${imageUrl}, ${err}`);
-                });
+                if(imageUrl === "" || imageUrl == null) continue
+                if (imageUrl.startsWith("//"))
+                    imageUrl = 'https:' + imageUrl
+                else if(imageUrl.startsWith('/'))
+                    imageUrl = base_url + imageUrl
+                try {
+                    const filename = path.basename(imageUrl);
+                    https.get(imageUrl, {timeout: 5000}, (response) => {
+                        let chunks = [];
+                        response.on('data', (chunk) => {
+                            chunks.push(chunk);
+                        });
+                        response.on('end', () => {
+                            const buffer = Buffer.concat(chunks);
+                            uploadImageToS3(buffer, filename, domain, url, insertId)
+                            log.info(`Image downloaded ${imageUrl} from ${url}`)
+                        });
+                    })
+                } catch(err) {
+                    console.error(`Error downloading image ${imageUrl}, for ${url}, ${err}`)
+                }
             }
         } catch(err){
             log.error(`error to fetch img tags, url: ${url}, ${err}`)
             reject(`Image Download failed for ${url}`)
             return
         }
-        resolve(`Downloaded images for ${url}`)
+        resolve()
     })
 }
 
@@ -209,21 +224,26 @@ function crawl(url, proxy, level, url_status_map, domain) {
 
             browserContext = await browser.newContext();
             page = await browser.newPage(options);
-            let response;
+            let response = null;
             try {
                 response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
-            }catch(error){
-                response = await page.waitForResponse(response => response.status() === 200, { timeout: 20000})
-                log.error(`for url: ${url}, error: ${error}`);
+            } catch(error){
+                try {
+                    response = await page.waitForResponse(response => response.status() === 200, {timeout: 20000})
+                } catch(error) {
+                    log.error(`for url: ${url}, error: ${error}`);
+                }
             }
-            statusCode = response.status();
+            if(response == null)
+                statusCode = 999
+            else
+                statusCode = response.status();
 
             if(statusCode === 404) {
                 const url_end_slash_removed = url.slice(0,-1)
                 try {
                     response = await page.goto(url_end_slash_removed, {waitUntil: "networkidle", timeout: 20000 });
-                } catch(error){
-                    response = await page.waitForResponse(response => response.status() === 200, { timeout: 20000})
+                } catch(error) {
                     log.error(`for url: ${url_end_slash_removed}, error: ${error}`);
                 }
             }
@@ -257,7 +277,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
             ]).then((msg) => {
                 log.info(`saving html for ${url} to s3`)
             }).catch((err) => {
-                const query = `update crawl_status_2 set status=-1, log='${err}' where domain='${domain}' and url='${url}'`
+                const query = `update crawl_status_2 set status=-1, log="${err}" where domain='${domain}' and url='${url}'`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
@@ -280,7 +300,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
         } catch (error) {
             log.error(`error in crawl, url: ${url}, ${error}`);
             if(url_status_map.has(url) && error.message !== 'URL already crawled') {
-                const query = `update crawl_status_2 set status=-1, log='${error.toString().slice(0, 800)}' where domain='${domain}' and url='${url}'`;
+                const query = `update crawl_status_2 set status=-1, log="${error.toString().slice(0, 800)}" where domain='${domain}' and url='${url}'`;
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
@@ -290,7 +310,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 })
             }
             else if(!url_status_map.has(url)){
-                const query = `insert into crawl_status_2 (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, log='${error.toString().slice(0, 800)}')`
+                const query = `insert into crawl_status_2 (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, log="${error.toString().slice(0, 800)}")`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
