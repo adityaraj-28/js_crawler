@@ -19,7 +19,7 @@ const s3 = new AWS.S3({
 async function uploadImageToS3(buffer, filename, domain, url, insertId) {
     let env = process.env.ENVIRONMENT
     if(env == null || !Object.values(constants.ENV).includes(env))
-        env = 'dev'
+        env = constants.ENV.DEV
 
     const directory = `${domain}_${insertId == null ? '': insertId}`
     const s3Key = `${env}/${domain}/${directory}/images/${new Date().toISOString()}_${filename}`

@@ -12,4 +12,5 @@ COPY . .
 
 RUN npx playwright install-deps
 RUN chmod +x run.sh
-ENTRYPOINT ["/bin/bash", "run.sh", "4", "0"]
+ENV ENVIRONMENT=staging
+ENTRYPOINT ["/bin/bash", "run.sh"]

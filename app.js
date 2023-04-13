@@ -6,7 +6,7 @@ const log = require('./logger')
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from crawl_status_2 where level=${level} and status=0 and domain='1000museums.com'`
+        const query = `select domain, url from crawl_status_2 where level=${level} and status=0 and domain='sapo.pt'`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -48,7 +48,7 @@ async function get_root_domain(){
 async function processRootDomains() {
     log.info('processing root domains')
     // const root_domains = await get_root_domain();
-    const root_domains = ['1000museums.com']
+    const root_domains = ['sapo.pt']
     for (const domain of root_domains) {
         if(domain.includes(':')) continue
         const url_status_map = await getDomainUrls(domain)
