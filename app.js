@@ -48,7 +48,7 @@ async function get_root_domain(){
 async function processRootDomains() {
     log.info('processing root domains')
     // const root_domains = await get_root_domain();
-    const root_domains = ['sapo.pt']
+    const root_domains = ['apple.com']
     for (const domain of root_domains) {
         if(domain.includes(':')) continue
         const url_status_map = await getDomainUrls(domain)
@@ -91,39 +91,39 @@ async function run() {
     log.info('=====started======')
     await processRootDomains();
 
-    let level = 1
-    while(1){
-        if (level > LEVEL_LIMIT) {
-            break
-        }
-        const domain_url_list = await fetch_unprocessed_urls(level)
-        if(domain_url_list.length === 0) {
-            level++;
-            break
-        }
-
-        for(const domain_url of domain_url_list){
-            const event = {body: {url: domain_url.url, domain: domain_url.domain, level: level}};
-            const url_status_map = await getDomainUrls(domain_url.domain)
-            try {
-                if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) continue
-                // -2 to mark that code has touched this url
-                const query = `update crawl_status_2 set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
-                db.query(query, (err, res, fields) => {
-                    if (err) {
-                        log.error(`${query}, error: ${err}`)
-                        throw new Error(`${err}`)
-                    } else {
-                        log.info(`${query}, success`)
-                    }
-                })
-                const res = await website_crawler_sync(event, url_status_map);
-                console.log(res)
-            } catch (err) {
-                log.error('website_crawler_sync error: ' + err)
-            }
-        }
-    }
+    // let level = 1
+    // while(1){
+    //     if (level > LEVEL_LIMIT) {
+    //         break
+    //     }
+    //     const domain_url_list = await fetch_unprocessed_urls(level)
+    //     if(domain_url_list.length === 0) {
+    //         level++;
+    //         break
+    //     }
+    //
+    //     for(const domain_url of domain_url_list){
+    //         const event = {body: {url: domain_url.url, domain: domain_url.domain, level: level}};
+    //         const url_status_map = await getDomainUrls(domain_url.domain)
+    //         try {
+    //             if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) continue
+    //             // -2 to mark that code has touched this url
+    //             const query = `update crawl_status_2 set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
+    //             db.query(query, (err, res, fields) => {
+    //                 if (err) {
+    //                     log.error(`${query}, error: ${err}`)
+    //                     throw new Error(`${err}`)
+    //                 } else {
+    //                     log.info(`${query}, success`)
+    //                 }
+    //             })
+    //             const res = await website_crawler_sync(event, url_status_map);
+    //             console.log(res)
+    //         } catch (err) {
+    //             log.error('website_crawler_sync error: ' + err)
+    //         }
+    //     }
+    // }
     log.info("===ending===")
 }
 

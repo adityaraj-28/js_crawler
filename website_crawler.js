@@ -8,6 +8,7 @@ const  { writePageContentToS3, uploadImageToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
 const https = require('https')
+const constants = require("constants");
 
 function addSlashInUrl(url){
     if(url[url.length - 1] !== '/'){
@@ -225,6 +226,27 @@ function crawl(url, proxy, level, url_status_map, domain) {
             browserContext = await browser.newContext();
             page = await browser.newPage(options);
             let response = null;
+
+            page.on('response', response => {
+                const res_url = response.url()
+                    try {
+                        const contentType = response.headers()['content-type']
+                        let temp_url = res_url
+                        if (res_url && res_url.length > 1 && res_url.at(-1) === '/') {
+                            temp_url = res_url.slice(0, -1)
+                        }
+                        const ext = (temp_url.split('.'))[-1]
+                        if(constants.IMAGE_EXTENSION.includes(ext) || contentType.startsWith('image/')) {
+                            console.log(`valid image url: ${res_url}`)
+                            // download this
+                        }
+                        console.log('<<', response.status(), response.url())
+                    } catch(err){
+                        console.log(`url: ${url}, resource-url:${res_url}, err: ${err}`)
+                    }
+                }
+            );
+
             try {
                 response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
             } catch(error){
