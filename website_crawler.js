@@ -8,7 +8,6 @@ const  { writePageContentToS3, uploadImageToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
 const https = require('https')
-const constants = require("constants");
 
 function addSlashInUrl(url){
     if(url[url.length - 1] !== '/'){
@@ -104,7 +103,6 @@ function extractUrls(page, url_status_map, level, domain) {
                 if(attr === null){
                     return ''
                 }
-                console.log('attr: ' + attr)
                 const hash_index = attr.indexOf('#')
                 if(hash_index !== -1){
                     attr = attr.substring(0, hash_index)
@@ -227,8 +225,8 @@ function crawl(url, proxy, level, url_status_map, domain) {
             page = await browser.newPage(options);
             let response = null;
 
-            page.on('response', response => {
-                const res_url = response.url()
+            page.on('response', async response => {
+                    const res_url = response.url()
                     try {
                         const contentType = response.headers()['content-type']
                         let temp_url = res_url
@@ -236,13 +234,30 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             temp_url = res_url.slice(0, -1)
                         }
                         const ext = (temp_url.split('.'))[-1]
-                        if(constants.IMAGE_EXTENSION.includes(ext) || contentType.startsWith('image/')) {
-                            console.log(`valid image url: ${res_url}`)
-                            // download this
+                        if (CONSTANTS.IMAGE_EXTENSION.includes(ext) || contentType.startsWith('image/')) {
+                            log.info(`valid image url: ${res_url}`)
+                            const buffer = await response.body()
+                            const filename = path.basename(temp_url)
+                            db.query(`select id from crawl_status_2 where domain="${domain}" and url="${url}"`, (err, res, fields) => {
+                                if(err){
+                                    log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
+                                } else {
+                                    try {
+                                        let insertId = null
+                                        if(res && res[0] && res[0].id){
+                                            insertId = res[0].id
+                                        }
+                                        uploadImageToS3(buffer, filename, domain, url, insertId)
+                                    } catch(err){
+                                        log.error(err)
+                                    }
+                                }
+                            })
+
                         }
-                        console.log('<<', response.status(), response.url())
-                    } catch(err){
-                        console.log(`url: ${url}, resource-url:${res_url}, err: ${err}`)
+
+                    } catch (err) {
+                        log.error(`url: ${url}, resource-url:${res_url}, err: ${err}`)
                     }
                 }
             );
