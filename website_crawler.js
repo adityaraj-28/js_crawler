@@ -237,7 +237,9 @@ function crawl(url, proxy, level, url_status_map, domain) {
                         if (CONSTANTS.IMAGE_EXTENSION.includes(ext) || (contentType != null && contentType.startsWith('image/'))) {
                             log.info(`valid image url: ${res_url}`)
                             const buffer = await response.body()
-                            const filename = `${path.basename(temp_url)}.png`
+                            let filename = `${path.basename(temp_url)}`
+                            if (!CONSTANTS.IMAGE_EXTENSION.includes(ext))
+                                filename = filename + '.png'
                             db.query(`select id from crawl_status where domain="${domain}" and url="${url}"`, (err, res, fields) => {
                                 if(err){
                                     log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
