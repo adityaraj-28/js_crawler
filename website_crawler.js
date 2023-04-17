@@ -113,7 +113,6 @@ function extractUrls(page, url_status_map, level, domain) {
                 return !['ftp://', 'mailto:', 'tel:', 'sms:', 'data:', 'javascript:'].some(prefix => href.startsWith(prefix));
 
             })))]
-            let valid_link_count = 0
             const validLinkSet = new Set()
             for (let i = 0; i < elementHrefs.length; i++) {
                 if(elementHrefs[i].startsWith("http")){
@@ -125,9 +124,6 @@ function extractUrls(page, url_status_map, level, domain) {
                 if(!isValidUrl(elementHrefs[i]) || elementHrefs[i] === page.url()) continue
                 elementHrefs[i] = addSlashInUrl(elementHrefs[i])
                 if(url_status_map.has(elementHrefs[i])) continue
-                valid_link_count++
-                // todo: remove this in staging
-                if(valid_link_count > 6) break
                 if(validLinkSet.has(elementHrefs[i])) continue
                 else validLinkSet.add(elementHrefs[i])
                 log.info("valid url: " + elementHrefs[i])
