@@ -4,15 +4,12 @@ const db = require('./db')
 const log = require('./logger')
 const constants = require('./constants')
 
-const credentials = new AWS.SharedIniFileCredentials({profile: 'default'});
-AWS.config.credentials = credentials;
-
 // Initialize the S3 client
 const s3 = new AWS.S3({
     // Set your AWS access credentials and region here
-    accessKeyId: AWS.config.credentials.accessKeyId,
-    secretAccessKey: AWS.config.credentials.secretAccessKey,
-    sessionToken: AWS.config.credentials.sessionToken,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    sessionToken: process.env.AWS_SESSION_TOKEN,
     region: 'us-east-1'
 });
 
