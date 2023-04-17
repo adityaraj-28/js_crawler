@@ -6,7 +6,7 @@ const log = require('./logger')
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from crawl_status where level=${level} and status=0`
+        const query = `select domain, url from crawl_status where level=${level} and status=0 and domain='0-6.com'`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -47,7 +47,8 @@ async function get_root_domain(){
 
 async function processRootDomains() {
     log.info('processing root domains')
-    const root_domains = await get_root_domain();
+    // const root_domains = await get_root_domain();
+    const root_domains = ['0-6.com']
     for (const domain of root_domains) {
         if(domain.includes(':')) continue
         const url_status_map = await getDomainUrls(domain)
@@ -116,8 +117,7 @@ async function run() {
                         log.info(`${query}, success`)
                     }
                 })
-                const res = await website_crawler_sync(event, url_status_map);
-                console.log(res)
+                await website_crawler_sync(event, url_status_map);
             } catch (err) {
                 log.error('website_crawler_sync error: ' + err)
             }

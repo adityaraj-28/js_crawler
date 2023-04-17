@@ -349,7 +349,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 })
             }
             else if(!url_status_map.has(url)){
-                const query = `insert into crawl_status (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, log="${error.toString().slice(0, 800)}")`
+                const query = `insert into crawl_status (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
