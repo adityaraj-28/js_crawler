@@ -15,12 +15,13 @@ const s3 = new AWS.S3({
 });
 
 async function uploadImageToS3(buffer, filename, domain, url, insertId) {
+    if(filename == null) return
     let env = process.env.ENVIRONMENT
     if(env == null || !Object.values(constants.ENV).includes(env))
         env = constants.ENV.DEV
 
     const directory = `${domain}_${insertId == null ? '': insertId}`
-    const s3Key = `${env}/${domain}/${directory}/images/${new Date().toISOString()}_${filename}`
+    const s3Key = `${env}/${domain}/${directory}/images/${filename}`
     s3.upload({
         Bucket: constants.S3_BUCKET_NAME,
         Key: s3Key,
@@ -41,7 +42,7 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
         env = 'dev'
 
     const directory = `${domain}_${insertId == null ? '': insertId}`
-    const s3Key = `${env}/${domain}/${directory}/${new Date().toISOString()}_data.txt`
+    const s3Key = `${env}/${domain}/${directory}/data.txt`
 
 
     s3.upload({
