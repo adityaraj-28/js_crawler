@@ -243,7 +243,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             temp_url = res_url.slice(0, -1)
                         }
 
-                        if (contentType != null && contentType.startsWith('image/')) {
+                        if (contentType != null && contentType.startsWith('image/') && !contentType.startsWith("image/gif")) {
                             log.info(`valid image url: ${res_url}`)
                             const buffer = await response.body()
                             let filename = `${path.basename(temp_url)}`
