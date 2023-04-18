@@ -3,6 +3,7 @@ const AWS = require('aws-sdk');
 const db = require('./db')
 const log = require('./logger')
 const constants = require('./constants')
+const {CRAWL_STATUS} = require("./constants");
 
 // Initialize the S3 client
 const s3 = new AWS.S3({
@@ -49,14 +50,14 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
             Body: pageContent
         }, function (err, data) {
             if (err) {
-                db.query(`update crawl_status set log="can't upload to s3: ${err.name}" where domain="${domain}" and url="${url}"`)
+                db.query(`update ${CRAWL_STATUS} set log="can't upload to s3: ${err.name}" where domain="${domain}" and url="${url}"`)
                 log.error(`s3 upload error for url ${url}: ${err}`)
             } if (data) {
                 let data_loc = data.Location;
                 data_loc = data_loc.split('/').slice(0,-1).join('/') + '/'
-                db.query(`update crawl_status set s3_uri="${data_loc}" where domain="${domain}" and url="${url}"`, (err, result, fields) => {
+                db.query(`update ${CRAWL_STATUS} set s3_uri="${data_loc}" where domain="${domain}" and url="${url}"`, (err, result, fields) => {
                     if(err){
-                        db.query(`update crawl_status set log="can't update s3_uri: ${err.name}" where domain="${domain}" and url="${url}"`)
+                        db.query(`update ${CRAWL_STATUS} set log="can't update s3_uri: ${err.name}" where domain="${domain}" and url="${url}"`)
                         log.error(`db update error: ${err}`)
                     }
                     else{

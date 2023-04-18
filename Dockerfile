@@ -13,4 +13,5 @@ COPY . .
 RUN npx playwright install-deps
 RUN chmod +x run.sh
 ENV ENVIRONMENT=staging
+ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 ENTRYPOINT ["tail", "-f", "/dev/null"]

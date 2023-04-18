@@ -1,12 +1,12 @@
 'use strict';
 const db = require("./db");
-const { LEVEL_LIMIT } = require("./constants");
+const { LEVEL_LIMIT, CRAWL_STATUS} = require("./constants");
 const website_crawler_sync = require("./website_crawler");
 const log = require('./logger')
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from crawl_status where level=${level} and status=0`
+        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -28,7 +28,7 @@ async function get_root_domain(){
         const argv = process.argv
         const limit = argv[2]
         const offset = argv[3]
-        const query = `select name from domains left outer join crawl_status on domains.name = crawl_status.domain where domain is NULL LIMIT ${limit} OFFSET ${offset}`
+        const query = `select name from domains left outer join ${CRAWL_STATUS} on domains.name = ${CRAWL_STATUS}.domain where domain is NULL LIMIT ${limit}OFFSET ${offset}`
         console.log(query)
         db.query(query, (err, res) => {
             if(err){
@@ -63,7 +63,7 @@ async function processRootDomains() {
 function getDomainUrls(domain) {
     log.info(`Fetching urls for domain: ${domain}`)
     return new Promise(async (resolve, reject) => {
-        const query = `select id, domain, url, status from crawl_status where domain='${domain}'`
+        const query = `select id, domain, url, status from ${CRAWL_STATUS} where domain='${domain}'`
         log.info('')
         db.query(query, (error, results, _) => {
             log.info(`executing query: ${query}`)
@@ -107,7 +107,7 @@ async function run() {
             try {
                 if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) continue
                 // -2 to mark that code has touched this url
-                const query = `update crawl_status set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
+                const query = `update ${CRAWL_STATUS} set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
                 db.query(query, (err, res, fields) => {
                     if (err) {
                         log.error(`${query}, error: ${err}`)

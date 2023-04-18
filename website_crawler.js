@@ -8,6 +8,7 @@ const  { writePageContentToS3, uploadImageToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
 const https = require('https')
+const {CRAWL_STATUS} = require("./constants");
 
 function addSlashInUrl(url){
     if(url[url.length - 1] !== '/'){
@@ -66,7 +67,7 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
     if(url_status_map.has(url)) {
         const value = url_status_map.get(url)
         if(value.status !== 1 && status === 1) {
-            const update_query = `update crawl_status set log=NULL, status=1, redirection_chain='${chain}' where id=${value.id}`
+            const update_query = `update ${CRAWL_STATUS} set log=NULL,status=1,redirection_chain='${chain}' where id=${value.id}`
             log.info('DB query'+ update_query)
             db.query(update_query)
         } else {
@@ -77,9 +78,9 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
         }
         return value.id
     } else {
-        let query = `insert into crawl_status (domain, url, level, status) values ('${domain}', '${url}', ${level}, ${status})`
+        let query = `insert into ${CRAWL_STATUS} (domain, url, level, status)values ('${domain}', '${url}', ${level}, ${status})`
         if(chain) {
-            query = `insert into crawl_status (domain, url, level, status, redirection_chain) values ('${domain}', '${url}', ${level}, ${status}, '${chain}')`
+            query = `insert into ${CRAWL_STATUS} (domain, url, level, status, redirection_chain)values ('${domain}', '${url}', ${level}, ${status}, '${chain}')`
         }
         log.info(`DB query: ${query}`)
         db.query(query, (err, res) => {
@@ -139,7 +140,7 @@ function extractUrls(page, url_status_map, level, domain) {
         }
         catch (error) {
             log.error(error)
-            const query = `update crawl_status set status=-1, log="${error.name}" where domain='${domain}' and url='${page.url()}'`
+            const query = `update ${CRAWL_STATUS} set status=-1,log="${error.name}" where domain='${domain}' and url='${page.url()}'`
             db.query(query, (err, result, fields) => {
                 if(err)
                     log.error(`${query}, error: ${err.toString().slice(0, 800)}`)
@@ -213,7 +214,8 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 ignoreHTTPSErrors: true,
                 userAgent: CONSTANTS.USER_AGENT,
                 proxy: proxy,
-                headless: true
+                headless: true,
+                rejectUnauthorized: false
             }
             browser = await playwright.chromium.launch(options);
 
@@ -229,14 +231,15 @@ function crawl(url, proxy, level, url_status_map, domain) {
                         if (res_url && res_url.length > 1 && res_url.at(-1) === '/') {
                             temp_url = res_url.slice(0, -1)
                         }
-                        const ext = (temp_url.split('.'))[-1]
-                        if (CONSTANTS.IMAGE_EXTENSION.includes(ext) || (contentType != null && contentType.startsWith('image/'))) {
+
+                        if (contentType != null && contentType.startsWith('image/')) {
                             log.info(`valid image url: ${res_url}`)
                             const buffer = await response.body()
                             let filename = `${path.basename(temp_url)}`
-                            if (!CONSTANTS.IMAGE_EXTENSION.includes(ext))
+                            const ext = ((filename.split('.'))).slice(-1)[0]
+                            if (ext!=null && !CONSTANTS.IMAGE_EXTENSION.includes(ext))
                                 filename = filename + '.png'
-                            db.query(`select id from crawl_status where domain="${domain}" and url="${url}"`, (err, res, fields) => {
+                            db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
                                 if(err){
                                     log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
                                 } else {
@@ -312,7 +315,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
             ]).then((msg) => {
                 log.info(`saving html for ${url} to s3`)
             }).catch((err) => {
-                const query = `update crawl_status set status=-1, log="${err}" where domain='${domain}' and url='${url}'`
+                const query = `update ${CRAWL_STATUS} set status=-1,log="${err}" where domain='${domain}' and url='${url}'`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
@@ -335,7 +338,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
         } catch (error) {
             log.error(`error in crawl, url: ${url}, ${error}`);
             if(url_status_map.has(url) && error.message !== 'URL already crawled') {
-                const query = `update crawl_status set status=-1, log="${error.toString().slice(0, 800)}" where domain='${domain}' and url='${url}'`;
+                const query = `update ${CRAWL_STATUS} set status=-1,log="${error.toString().slice(0, 800)}" where domain='${domain}' and url='${url}'`;
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
@@ -345,7 +348,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 })
             }
             else if(!url_status_map.has(url)){
-                const query = `insert into crawl_status (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
+                const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log)values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
