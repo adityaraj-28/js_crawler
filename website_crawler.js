@@ -236,8 +236,11 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             log.info(`valid image url: ${res_url}`)
                             const buffer = await response.body()
                             let filename = `${path.basename(temp_url)}`
+                            if(filename.indexOf('?') !== -1){
+                                filename = filename.slice(0, filename.indexOf('?'))
+                            }
                             const ext = ((filename.split('.'))).slice(-1)[0]
-                            if (ext!=null && !CONSTANTS.IMAGE_EXTENSION.includes(ext))
+                            if (ext==null || !CONSTANTS.IMAGE_EXTENSION.includes(ext))
                                 filename = filename + '.png'
                             db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
                                 if(err){
