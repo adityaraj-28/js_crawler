@@ -208,15 +208,15 @@ function augment_image_name(filename) {
     return filename;
 }
 
-function checkValidFileTypeToDownload(url) {
+function checkFileTypeIsADownloadable(url) {
     if(url.indexOf('?') !== -1){
         url = url.slice(0, url.indexOf('?'))
         if(url.slice(-1) === '/') {
              url = url.slice(0, -1)
         }
-        const ext = url.split('.').slice(-1)[0]
-        return CONSTANTS.VALID_DOWNLOADABLE_EXTENSIONS.includes(ext)
     }
+    const ext = url.split('.').slice(-1)[0]
+    return CONSTANTS.VALID_DOWNLOADABLE_EXTENSIONS.includes(ext)
 }
 
 function crawl(url, proxy, level, url_status_map, domain) {
@@ -282,7 +282,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
             );
 
             page.on('download', download => {
-                if(!checkValidFileTypeToDownload(download.url())) return
+                if(!checkFileTypeIsADownloadable(download.url())) return
                 downloadCount++
                 const filename = download.suggestedFilename()
                 download.saveAs(filename).then(_ => {
