@@ -9,5 +9,6 @@ module.exports = {
     },
     S3_BUCKET_NAME: 'website-crawler-dump-synaptic',
     IMAGE_EXTENSION : ['png', 'jpg', 'jpeg', 'svg', 'bmp', 'webp','ico'],
-    CRAWL_STATUS: 'crawl_status'
+    CRAWL_STATUS: 'crawl_status',
+    VALID_DOWNLOADABLE_EXTENSIONS: ['pdf', 'doc', 'docx']
 }

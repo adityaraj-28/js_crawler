@@ -14,23 +14,23 @@ const s3 = new AWS.S3({
     region: 'us-east-1'
 });
 
-async function uploadImageToS3(buffer, filename, domain, url, insertId) {
+async function uploadDocumentToS3(buffer, filename, domain, url, insertId) {
     if(filename == null) return
     let env = process.env.ENVIRONMENT
     if(env == null || !Object.values(constants.ENV).includes(env))
         env = constants.ENV.DEV
 
     const directory = `${domain}_${insertId == null ? '': insertId}`
-    const s3Key = `${env}/${domain}/${directory}/images/${filename}`
+    const s3Key = `${env}/${domain}/${directory}/documents/${filename}`
     s3.upload({
         Bucket: constants.S3_BUCKET_NAME,
         Key: s3Key,
         Body: buffer,
     }, function (err, _)  {
         if(err) {
-            log.error(`Image Upload to s3 failed, url:${url}, filename: ${filename}, ${err}`)
+            log.error(`Document Upload to s3 failed, url:${url}, filename: ${filename}, ${err}`)
         } else {
-            log.info(`Image uploaded to s3, url: ${url}, filename: ${filename}`)
+            log.info(`Document uploaded to s3, url: ${url}, filename: ${filename}`)
         }
     })
 }
@@ -71,4 +71,4 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
     );
 }
 
-module.exports = { writePageContentToS3, uploadImageToS3 };
+module.exports = { writePageContentToS3, uploadDocumentToS3 };

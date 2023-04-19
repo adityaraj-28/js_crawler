@@ -4,7 +4,7 @@ const playwright = require('playwright');
 const db = require('./db')
 const _url = require('url');
 const fs =require('fs')
-const  { writePageContentToS3, uploadImageToS3 } = require('./s3.js')
+const  { writePageContentToS3, uploadDocumentToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
 const https = require('https')
@@ -78,9 +78,9 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
         }
         return value.id
     } else {
-        let query = `insert into ${CRAWL_STATUS} (domain, url, level, status)values ('${domain}', '${url}', ${level}, ${status})`
+        let query = `insert into ${CRAWL_STATUS} (domain, url, level, status) values ('${domain}', '${url}', ${level}, ${status})`
         if(chain) {
-            query = `insert into ${CRAWL_STATUS} (domain, url, level, status, redirection_chain)values ('${domain}', '${url}', ${level}, ${status}, '${chain}')`
+            query = `insert into ${CRAWL_STATUS} (domain, url, level, status, redirection_chain) values ('${domain}', '${url}', ${level}, ${status}, '${chain}')`
         }
         log.info(`DB query: ${query}`)
         db.query(query, (err, res) => {
@@ -181,7 +181,7 @@ function downloadImages(page, insertId, url, domain) {
                         });
                         response.on('end', () => {
                             const buffer = Buffer.concat(chunks);
-                            uploadImageToS3(buffer, filename, domain, url, insertId)
+                            uploadDocumentToS3(buffer, filename, domain, url, insertId)
                             log.info(`Image downloaded ${imageUrl} from ${url}`)
                         });
                     })
@@ -208,6 +208,17 @@ function augment_image_name(filename) {
     return filename;
 }
 
+function checkValidFileTypeToDownload(url) {
+    if(url.indexOf('?') !== -1){
+        url = url.slice(0, url.indexOf('?'))
+        if(url.slice(-1) === '/') {
+             url = url.slice(0, -1)
+        }
+        const ext = url.split('.').slice(-1)[0]
+        return CONSTANTS.VALID_DOWNLOADABLE_EXTENSIONS.includes(ext)
+    }
+}
+
 function crawl(url, proxy, level, url_status_map, domain) {
     return new Promise(async (resolve, reject) => {
         url = addSlashInUrl(url)
@@ -215,9 +226,9 @@ function crawl(url, proxy, level, url_status_map, domain) {
 
         let browser = null;
         let page = null;
-        let browserContext = null;
-        let statusCode = 200;
+        let statusCode = null;
         const data = {};
+        let downloadCount = 0
         try {
             const options = {
                 locale: 'en-GB',
@@ -230,7 +241,6 @@ function crawl(url, proxy, level, url_status_map, domain) {
             }
             browser = await playwright.chromium.launch(options);
 
-            browserContext = await browser.newContext();
             page = await browser.newPage(options);
             let response = null;
 
@@ -257,7 +267,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                                         if(res && res[0] && res[0].id){
                                             insertId = res[0].id
                                         }
-                                        uploadImageToS3(buffer, filename, domain, url, insertId)
+                                        uploadDocumentToS3(buffer, filename, domain, url, insertId)
                                     } catch(err){
                                         log.error(err)
                                     }
@@ -265,12 +275,48 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             })
 
                         }
-
                     } catch (err) {
                         log.error(`url: ${url}, resource-url:${res_url}, err: ${err}`)
                     }
                 }
             );
+
+            page.on('download', download => {
+                if(!checkValidFileTypeToDownload(download.url())) return
+                downloadCount++
+                const filename = download.suggestedFilename()
+                download.saveAs(filename).then(_ => {
+                    db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
+                        if(err){
+                            log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
+                        } else {
+                            try {
+                                let insertId = null
+                                if(res && res[0] && res[0].id){
+                                    insertId = res[0].id
+                                }
+                                uploadDocumentToS3(fs.createReadStream(filename), filename, domain, url, insertId).finally(_ => {
+                                    log.info(`file ${filename} for ${domain} and url: ${url} saved`)
+                                    downloadCount--;
+                                    fs.unlink(filename, function(err) {
+                                        if(err && err.code === 'ENOENT') {
+                                            log.info(`File ${filename} doesn't exist, won't remove it.`);
+                                        } else if (err) {
+                                            // other errors, e.g. maybe we don't have enough permission
+                                            log.error(`Error occurred while trying to remove file ${filename}`);
+                                        } else {
+                                            log.info(`${filename} removed`);
+                                        }
+                                    });
+                                })
+                            } catch(err){
+                                log.error(err)
+                            }
+                        }
+                    })
+
+                })
+            })
 
             try {
                 response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
@@ -281,12 +327,11 @@ function crawl(url, proxy, level, url_status_map, domain) {
                     log.error(`for url: ${url}, error: ${error}`);
                 }
             }
-            if(response == null)
-                statusCode = 999
-            else
+            if(response != null)
                 statusCode = response.status();
 
-            if(statusCode === 404) {
+            // if any 4xx error, try removing / at the end, although we save in DB keeping / at the end to
+            if(statusCode == null || Math.floor(statusCode/100) === 4) {
                 const url_end_slash_removed = url.slice(0,-1)
                 try {
                     response = await page.goto(url_end_slash_removed, {waitUntil: "networkidle", timeout: 20000 });
@@ -294,18 +339,23 @@ function crawl(url, proxy, level, url_status_map, domain) {
                     log.error(`for url: ${url_end_slash_removed}, error: ${error}`);
                 }
             }
-            statusCode = response.status();
-            if (statusCode !== 200) throw new Error(`${statusCode}`);
+            if(response == null)
+                statusCode = 999
+            else
+                statusCode = response.status();
 
-            const contentType = response.headers()['content-type']
-            if(!isContentTypeValid(contentType)) {
-                throw new Error(`response url ${page.url()}, content type: ${contentType} invalid`)
-            }
+            if(statusCode === 999) throw new Error(`Response is null`)
+            if (statusCode !== 200) throw new Error(`${statusCode}`);
 
             if(url_status_map.has(url) && url_status_map.get(url).status === true){
                 log.info(`Page ${url} already processed`)
                 reject('Page already processed')
                 return
+            }
+
+            const contentType = response.headers()['content-type']
+            if(!isContentTypeValid(contentType)) {
+                throw new Error(`response url ${page.url()}, content type: ${contentType} invalid`)
             }
 
             const chain = redirectionChain((new URL(url)).href, response);
@@ -357,7 +407,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 })
             }
             else if(!url_status_map.has(url)){
-                const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log)values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
+                const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
@@ -368,14 +418,26 @@ function crawl(url, proxy, level, url_status_map, domain) {
             }
             reject(error.message);
         } finally {
-            if (page !== null) {
-                await page.close();
+            function checkVariable(downloadCount, action) {
+                const intervalId = setInterval(async () => {
+                    if (downloadCount === 0) {
+                        await action();
+                        log.info('Download finished');
+                        clearInterval(intervalId);
+                    } else {
+                        log.info('Download in progress');
+                    }
+                }, 2000);
             }
-            if (browserContext !== null) {
-                await browserContext.close();
+            if (page !== null) {
+                checkVariable(downloadCount, async () => {
+                    await page.close();
+                });
             }
             if (browser !== null) {
-                await browser.close();
+                checkVariable(downloadCount, async () => {
+                    await browser.close();
+                });
             }
         }
     });
