@@ -6,7 +6,7 @@ const log = require('./logger')
 
 async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0`
+        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 LIMIT 50`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
