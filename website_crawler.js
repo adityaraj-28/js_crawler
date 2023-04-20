@@ -208,12 +208,12 @@ function augment_image_name(filename) {
     return filename;
 }
 
-function checkFileTypeIsADownloadable(url) {
+function fileTypeIsADownloadable(url) {
     if(url.indexOf('?') !== -1){
         url = url.slice(0, url.indexOf('?'))
-        if(url.slice(-1) === '/') {
-             url = url.slice(0, -1)
-        }
+    }
+    if(url.slice(-1) === '/') {
+        url = url.slice(0, -1)
     }
     const ext = url.split('.').slice(-1)[0]
     return CONSTANTS.VALID_DOWNLOADABLE_EXTENSIONS.includes(ext)
@@ -282,24 +282,26 @@ function crawl(url, proxy, level, url_status_map, domain) {
             );
 
             page.on('download', download => {
-                if(!checkFileTypeIsADownloadable(download.url())) return
+                if (fileTypeIsADownloadable(download.url())) {
                 downloadCount++
                 const filename = download.suggestedFilename()
                 download.saveAs(filename).then(_ => {
-                    db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
-                        if(err){
+                    db.query(`select id
+                              from ${CRAWL_STATUS}
+                              where domain ="${domain}" and url="${url}"`, (err, res, fields) => {
+                        if (err) {
                             log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
                         } else {
                             try {
                                 let insertId = null
-                                if(res && res[0] && res[0].id){
+                                if (res && res[0] && res[0].id) {
                                     insertId = res[0].id
                                 }
                                 uploadDocumentToS3(fs.createReadStream(filename), filename, domain, url, insertId).finally(_ => {
                                     log.info(`file ${filename} for ${domain} and url: ${url} saved`)
                                     downloadCount--;
-                                    fs.unlink(filename, function(err) {
-                                        if(err && err.code === 'ENOENT') {
+                                    fs.unlink(filename, function (err) {
+                                        if (err && err.code === 'ENOENT') {
                                             log.info(`File ${filename} doesn't exist, won't remove it.`);
                                         } else if (err) {
                                             // other errors, e.g. maybe we don't have enough permission
@@ -309,13 +311,14 @@ function crawl(url, proxy, level, url_status_map, domain) {
                                         }
                                     });
                                 })
-                            } catch(err){
+                            } catch (err) {
                                 log.error(err)
                             }
                         }
                     })
 
                 })
+            }
             })
 
             try {
@@ -396,25 +399,30 @@ function crawl(url, proxy, level, url_status_map, domain) {
             resolve(data);
         } catch (error) {
             log.error(`error in crawl, url: ${url}, ${error}`);
-            if(url_status_map.has(url) && error.message !== 'URL already crawled') {
-                const query = `update ${CRAWL_STATUS} set status=-1,log="${error.toString().slice(0, 800)}" where domain='${domain}' and url='${url}'`;
-                db.query(query, (err, result, fields) => {
-                    if(err){
-                        log.error(`${query}, error: ${err}`)
-                    } else {
-                        log.info(`${query}, success`)
-                    }
-                })
-            }
-            else if(!url_status_map.has(url)){
-                const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log) values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
-                db.query(query, (err, result, fields) => {
-                    if(err){
-                        log.error(`${query}, error: ${err}`)
-                    } else {
-                        log.info(`${query}, success`)
-                    }
-                })
+            if(!fileTypeIsADownloadable(url)) {
+                if (url_status_map.has(url) && error.message !== 'URL already crawled') {
+                    const query = `update ${CRAWL_STATUS}
+                                   set status= -1,
+                                       log="${error.toString().slice(0, 800)}"
+                                   where domain ='${domain}' and url='${url}'`;
+                    db.query(query, (err, result, fields) => {
+                        if (err) {
+                            log.error(`${query}, error: ${err}`)
+                        } else {
+                            log.info(`${query}, success`)
+                        }
+                    })
+                } else if (!url_status_map.has(url)) {
+                    const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log)
+                                   values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
+                    db.query(query, (err, result, fields) => {
+                        if (err) {
+                            log.error(`${query}, error: ${err}`)
+                        } else {
+                            log.info(`${query}, success`)
+                        }
+                    })
+                }
             }
             reject(error.message);
         } finally {
