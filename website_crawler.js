@@ -219,6 +219,24 @@ function fileTypeIsADownloadable(url) {
     return CONSTANTS.VALID_DOWNLOADABLE_EXTENSIONS.includes(ext)
 }
 
+function handleIdAndDocumentUpload(domain, url, buffer, filename) {
+    db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
+        if (err) {
+            log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
+        } else {
+            try {
+                let insertId = null
+                if (res && res[0] && res[0].id) {
+                    insertId = res[0].id
+                }
+                uploadDocumentToS3(buffer, filename, domain, url, insertId)
+            } catch (err) {
+                log.error(err)
+            }
+        }
+    })
+}
+
 function crawl(url, proxy, level, url_status_map, domain) {
     return new Promise(async (resolve, reject) => {
         url = addSlashInUrl(url)
@@ -258,22 +276,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             const buffer = await response.body()
                             let filename = `${path.basename(temp_url)}`
                             filename = augment_image_name(filename);
-                            db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
-                                if(err){
-                                    log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
-                                } else {
-                                    try {
-                                        let insertId = null
-                                        if(res && res[0] && res[0].id){
-                                            insertId = res[0].id
-                                        }
-                                        uploadDocumentToS3(buffer, filename, domain, url, insertId)
-                                    } catch(err){
-                                        log.error(err)
-                                    }
-                                }
-                            })
-
+                            handleIdAndDocumentUpload(domain, url, buffer, filename);
                         }
                     } catch (err) {
                         log.error(`url: ${url}, resource-url:${res_url}, err: ${err}`)
@@ -282,43 +285,21 @@ function crawl(url, proxy, level, url_status_map, domain) {
             );
 
             page.on('download', download => {
-                if (fileTypeIsADownloadable(download.url())) {
-                downloadCount++
-                const filename = download.suggestedFilename()
-                download.saveAs(filename).then(_ => {
-                    db.query(`select id
-                              from ${CRAWL_STATUS}
-                              where domain ="${domain}" and url="${url}"`, (err, res, fields) => {
-                        if (err) {
-                            log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
-                        } else {
-                            try {
-                                let insertId = null
-                                if (res && res[0] && res[0].id) {
-                                    insertId = res[0].id
-                                }
-                                uploadDocumentToS3(fs.createReadStream(filename), filename, domain, url, insertId).finally(_ => {
-                                    log.info(`file ${filename} for ${domain} and url: ${url} saved`)
-                                    downloadCount--;
-                                    fs.unlink(filename, function (err) {
-                                        if (err && err.code === 'ENOENT') {
-                                            log.info(`File ${filename} doesn't exist, won't remove it.`);
-                                        } else if (err) {
-                                            // other errors, e.g. maybe we don't have enough permission
-                                            log.error(`Error occurred while trying to remove file ${filename}`);
-                                        } else {
-                                            log.info(`${filename} removed`);
-                                        }
-                                    });
-                                })
-                            } catch (err) {
-                                log.error(err)
-                            }
-                        }
+                const url = download.url()
+                if (fileTypeIsADownloadable(url)) {
+                    downloadCount++
+                    const filename = download.suggestedFilename();
+                    https.get(url, response => {
+                        const data = []
+                        response.on('data', (chunk) => {
+                            data.push(chunk)
+                        })
+                        response.on('end', () => {
+                            const buffer = Buffer.concat(data)
+                            handleIdAndDocumentUpload(domain, url, buffer, filename);
+                        })
                     })
-
-                })
-            }
+                }
             })
 
             try {
