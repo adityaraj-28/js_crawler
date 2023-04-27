@@ -105,7 +105,17 @@ async function run() {
             const event = {body: {url: domain_url.url, domain: domain_url.domain, level: level}};
             const url_status_map = await getDomainUrls(domain_url.domain)
             try {
-                if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) continue
+                if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) {
+                    const query = `delete from ${CRAWL_STATUS} where domain="${domain_url.domain}" and url="${domain_url.url}" and status=0`
+                    db.query(query, (err, res, fields) => {
+                        if(err) log.error(`${domain_url.domain}. url: ${domain_url.url}, err: ${err}`)
+                        else{
+                            log.info(`${query}, success`)
+                            log.info(`repeating ${domain_url.domain}. url: ${domain_url.url} already crawled, deleted status=0`)
+                        }
+                    })
+                    continue
+                }
                 // -2 to mark that code has touched this url
                 const query = `update ${CRAWL_STATUS} set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
                 db.query(query, (err, res, fields) => {
