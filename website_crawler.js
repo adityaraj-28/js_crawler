@@ -155,8 +155,6 @@ function extractUrls(page, url_status_map, level, domain) {
 function downloadImages(page, insertId, url, domain) {
     return new Promise(async (resolve, reject) => {
         try {
-            const parsed_url = _url.parse(page.url())
-            const base_url = `${parsed_url.protocol}//${parsed_url.hostname}`
             const imgElements = await page.$$('img');
             const imageUrlSet = new Set()
             for (const imgElement of imgElements) {
@@ -167,10 +165,7 @@ function downloadImages(page, insertId, url, domain) {
                     imageUrlSet.add(imageUrl)
 
                 if(imageUrl === "" || imageUrl == null) continue
-                if (imageUrl.startsWith("//"))
-                    imageUrl = 'https:' + imageUrl
-                else if(imageUrl.startsWith('/'))
-                    imageUrl = base_url + imageUrl
+                imageUrl = new URL(imageUrl, page.url())
                 try {
                     let filename = path.basename(imageUrl);
                     filename = augment_image_name(filename)
