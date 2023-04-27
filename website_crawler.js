@@ -246,7 +246,6 @@ function crawl(url, proxy, level, url_status_map, domain) {
         let page = null;
         let statusCode = null;
         const data = {};
-        let downloadCount = 0
         try {
             const options = {
                 locale: 'en-GB',
@@ -287,7 +286,6 @@ function crawl(url, proxy, level, url_status_map, domain) {
             page.on('download', download => {
                 const url = download.url()
                 if (fileTypeIsADownloadable(url)) {
-                    downloadCount++
                     const filename = download.suggestedFilename();
                     https.get(url, response => {
                         const data = []
@@ -407,26 +405,11 @@ function crawl(url, proxy, level, url_status_map, domain) {
             }
             reject(error.message);
         } finally {
-            function checkVariable(downloadCount, action) {
-                const intervalId = setInterval(async () => {
-                    if (downloadCount === 0) {
-                        await action();
-                        log.info('Download finished');
-                        clearInterval(intervalId);
-                    } else {
-                        log.info('Download in progress');
-                    }
-                }, 2000);
-            }
             if (page !== null) {
-                checkVariable(downloadCount, async () => {
-                    await page.close();
-                });
+                await page.close();
             }
             if (browser !== null) {
-                checkVariable(downloadCount, async () => {
-                    await browser.close();
-                });
+                await browser.close();
             }
         }
     });
