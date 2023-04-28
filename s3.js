@@ -11,11 +11,11 @@ const s3 = new AWS.S3({
     // Set your AWS access credentials and region here
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    // sessionToken: process.env.AWS_SESSION_TOKEN,
+    sessionToken: process.env.AWS_SESSION_TOKEN,
     region: 'us-east-1',
     // localstack testing
-    endpoint: 'http://localhost.localstack.cloud:4566',
-    s3ForcePathStyle: true
+    // endpoint: 'http://localhost.localstack.cloud:4566',
+    // s3ForcePathStyle: true
 });
 
 async function uploadDocumentToS3(buffer, filename, domain, url, insertId) {

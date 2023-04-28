@@ -4,10 +4,11 @@ const { LEVEL_LIMIT, CRAWL_STATUS} = require("./constants");
 const website_crawler_sync = require("./website_crawler");
 const log = require('./logger')
 require('dotenv').config();
+const constants = require('./constants')
 
-async function fetch_unprocessed_urls(level) {
+async function fetch_unprocessed_urls(level, domain_list) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 LIMIT 50`
+        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 and domain in (${domain_list.map(x => `"${x}"`).join(', ')}) LIMIT 50`
         queryCountInc()
         db.query(query, (err, res) => {
             const results = []
@@ -21,7 +22,6 @@ async function fetch_unprocessed_urls(level) {
                 })
                 resolve(results)
             }
-            log.info('query Count: ' + activeQueries())
             queryCountDec()
         })
     })
@@ -53,18 +53,18 @@ async function get_root_domain(){
 
 async function processRootDomains() {
     log.info('processing root domains')
-    // const root_domains = await get_root_domain();
-    const root_domains = ['abc.com']
+    const root_domains = await get_root_domain();
     for (const domain of root_domains) {
         if(domain.includes(':')) continue
         const url_status_map = await getDomainUrls(domain)
         const event = {body: {domain: domain, level: 0}};
         try {
-            // await website_crawler_sync(event, url_status_map);
+            await website_crawler_sync(event, url_status_map);
         } catch (err) {
             log.error('error to process root domains: ' + err)
         }
     }
+    return root_domains
 }
 
 function getDomainUrls(domain) {
@@ -95,17 +95,18 @@ function getDomainUrls(domain) {
     });
 }
 
-// check after 4 seconds 4 times
+let query_check_ctr = 0;
 function checkActiveDBQueriesAfterInterval() {
-    const interval = 10000
-    setTimeout(function() {
-        if (activeQueries() === 0) {
-            log.info("No more pending db queries, exiting");
-            db.end()
-        } else {
-            log.info("Pending db queries");
-        }
-    }, interval);
+    if(activeQueries() === 0){
+        query_check_ctr++;
+    } else {
+        query_check_ctr = 0
+    }
+    if(query_check_ctr === constants.CHECK_COUNT){
+        log.info("No active DB queries")
+        log.info("=====ending=====")
+        db.end()
+    }
 }
 
 async function run() {
@@ -154,7 +155,7 @@ async function run() {
             }
         }
     }
-    log.info("===ending===")
+    setInterval(checkActiveDBQueriesAfterInterval, constants.INTERVAL)
 }
 
 run()
