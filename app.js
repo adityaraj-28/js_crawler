@@ -29,7 +29,7 @@ async function get_root_domain(){
         const limit = argv[2]
         const offset = argv[3]
         const query = `select name from domains left outer join ${CRAWL_STATUS} on domains.name = ${CRAWL_STATUS}.domain where domain is NULL LIMIT ${limit} OFFSET ${offset}`
-        console.log(query)
+        log.info(query)
         db.query(query, (err, res) => {
             if(err){
                 log.error('error fetching root domain, terminating app')

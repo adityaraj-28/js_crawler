@@ -7,8 +7,14 @@ const fs =require('fs')
 const  { writePageContentToS3, uploadDocumentToS3 } = require('./s3.js')
 const path = require('path')
 const log = require('./logger');
-const https = require('https')
 const {CRAWL_STATUS} = require("./constants");
+const RetryStrategies = require("requestretry/strategies");
+const request = require('requestretry').defaults({
+    json: true,
+    retryStrategy: RetryStrategies.HTTPOrNetworkError,
+    maxAttempts: 3,
+    retryDelay: 3000,
+})
 
 function addSlashInUrl(url){
     if(url[url.length - 1] !== '/'){
@@ -165,23 +171,27 @@ function downloadImages(page, insertId, url, domain) {
                     imageUrlSet.add(imageUrl)
 
                 if(imageUrl === "" || imageUrl == null) continue
-                imageUrl = new URL(imageUrl, page.url())
+                imageUrl = new URL(imageUrl, page.url()).href
                 try {
                     let filename = path.basename(imageUrl);
                     filename = augment_image_name(filename)
-                    https.get(imageUrl, {timeout: 5000}, (response) => {
-                        let chunks = [];
-                        response.on('data', (chunk) => {
-                            chunks.push(chunk);
-                        });
-                        response.on('end', () => {
-                            const buffer = Buffer.concat(chunks);
-                            uploadDocumentToS3(buffer, filename, domain, url, insertId)
-                            log.info(`Image downloaded ${imageUrl} from ${url}`)
-                        });
+                    request.get({url: imageUrl, timeout: 5000}, (err, response, _) => {
+                        if(err)  {
+                            log.error(`Error downloading image ${imageUrl}, for ${url}, ${err}`)
+                        } else {
+                            let chunks = [];
+                            response.on('data', (chunk) => {
+                                chunks.push(chunk);
+                            });
+                            response.on('end', () => {
+                                const buffer = Buffer.concat(chunks);
+                                uploadDocumentToS3(buffer, filename, domain, url, insertId)
+                                log.info(`Image downloaded ${imageUrl} from ${url}`)
+                            });
+                        }
                     })
                 } catch(err) {
-                    console.error(`Error downloading image ${imageUrl}, for ${url}, ${err}`)
+                    log.error(`Error downloading image ${imageUrl}, for ${url}, ${err}`)
                 }
             }
         } catch(err){
@@ -282,15 +292,13 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 const url = download.url()
                 if (fileTypeIsADownloadable(url)) {
                     const filename = download.suggestedFilename();
-                    https.get(url, response => {
-                        const data = []
-                        response.on('data', (chunk) => {
-                            data.push(chunk)
-                        })
-                        response.on('end', () => {
-                            const buffer = Buffer.concat(data)
+                    request.get({url: url, encoding: null}, (err, response, body) => {
+                        if(err) {
+                            log.error(`Error downloading domain: ${domain}, url: ${url}`)
+                        } else {
+                            const buffer = Buffer.from(body)
                             handleIdAndDocumentUpload(domain, url, buffer, filename);
-                        })
+                        }
                     })
                 }
             })
