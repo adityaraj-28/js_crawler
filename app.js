@@ -4,9 +4,9 @@ const { LEVEL_LIMIT, CRAWL_STATUS} = require("./constants");
 const website_crawler_sync = require("./website_crawler");
 const log = require('./logger')
 
-async function fetch_unprocessed_urls(level) {
+async function fetch_unprocessed_urls(level, domain_list) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 LIMIT 50`
+        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 and domain in (${domain_list.map(x => `"${x}"`).join(', ')}) LIMIT 50`
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -58,6 +58,7 @@ async function processRootDomains() {
             log.error('error to process root domains: ' + err)
         }
     }
+    return root_domains
 }
 
 function getDomainUrls(domain) {
@@ -88,14 +89,14 @@ function getDomainUrls(domain) {
 
 async function run() {
     log.info('=====started======')
-    await processRootDomains();
+    const root_domains = await processRootDomains();
 
     let level = 1
     while(1){
         if (level > LEVEL_LIMIT) {
             break
         }
-        const domain_url_list = await fetch_unprocessed_urls(level)
+        const domain_url_list = await fetch_unprocessed_urls(level, root_domains)
         if(domain_url_list.length === 0) {
             level++;
             break
