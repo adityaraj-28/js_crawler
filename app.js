@@ -1,12 +1,14 @@
 'use strict';
-const db = require("./db");
+const {db, queryCountInc, queryCountDec, activeQueries} = require("./db");
 const { LEVEL_LIMIT, CRAWL_STATUS} = require("./constants");
 const website_crawler_sync = require("./website_crawler");
 const log = require('./logger')
+require('dotenv').config();
 
-async function fetch_unprocessed_urls(level, domain_list) {
+async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 and domain in (${domain_list.map(x => `"${x}"`).join(', ')}) LIMIT 50`
+        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 LIMIT 50`
+        queryCountInc()
         db.query(query, (err, res) => {
             const results = []
             if(err) {
@@ -19,6 +21,8 @@ async function fetch_unprocessed_urls(level, domain_list) {
                 })
                 resolve(results)
             }
+            log.info('query Count: ' + activeQueries())
+            queryCountDec()
         })
     })
 }
@@ -29,7 +33,8 @@ async function get_root_domain(){
         const limit = argv[2]
         const offset = argv[3]
         const query = `select name from domains left outer join ${CRAWL_STATUS} on domains.name = ${CRAWL_STATUS}.domain where domain is NULL LIMIT ${limit} OFFSET ${offset}`
-        log.info(query)
+        log.info(`Executing query: ${query}`)
+        queryCountInc()
         db.query(query, (err, res) => {
             if(err){
                 log.error('error fetching root domain, terminating app')
@@ -40,6 +45,7 @@ async function get_root_domain(){
             res.forEach(row => {
                 domains.push(row.name)
             })
+            queryCountDec()
             resolve(domains)
         });
     })
@@ -47,29 +53,30 @@ async function get_root_domain(){
 
 async function processRootDomains() {
     log.info('processing root domains')
-    const root_domains = await get_root_domain();
+    // const root_domains = await get_root_domain();
+    const root_domains = ['abc.com']
     for (const domain of root_domains) {
         if(domain.includes(':')) continue
         const url_status_map = await getDomainUrls(domain)
         const event = {body: {domain: domain, level: 0}};
         try {
-            await website_crawler_sync(event, url_status_map);
+            // await website_crawler_sync(event, url_status_map);
         } catch (err) {
             log.error('error to process root domains: ' + err)
         }
     }
-    return root_domains
 }
 
 function getDomainUrls(domain) {
     log.info(`Fetching urls for domain: ${domain}`)
     return new Promise(async (resolve, reject) => {
         const query = `select id, domain, url, status from ${CRAWL_STATUS} where domain='${domain}'`
-        log.info('')
+        log.info(`executing query: ${query}`)
+        queryCountInc()
         db.query(query, (error, results, _) => {
-            log.info(`executing query: ${query}`)
             if (error) {
                 log.error(`getDomainUrl: ${error.message}`)
+                queryCountDec()
                 reject(error)
             } else {
                 const url_status_map = new Map()
@@ -81,10 +88,24 @@ function getDomainUrls(domain) {
                         });
                     }
                 });
+                queryCountDec()
                 resolve(url_status_map)
             }
         });
     });
+}
+
+// check after 4 seconds 4 times
+function checkActiveDBQueriesAfterInterval() {
+    const interval = 10000
+    setTimeout(function() {
+        if (activeQueries() === 0) {
+            log.info("No more pending db queries, exiting");
+            db.end()
+        } else {
+            log.info("Pending db queries");
+        }
+    }, interval);
 }
 
 async function run() {

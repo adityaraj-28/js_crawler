@@ -1,17 +1,21 @@
 'use strict';
 const AWS = require('aws-sdk');
-const db = require('./db')
+const {db, queryCountInc, queryCountDec} = require("./db");
 const log = require('./logger')
 const constants = require('./constants')
 const {CRAWL_STATUS} = require("./constants");
+require('dotenv').config()
 
 // Initialize the S3 client
 const s3 = new AWS.S3({
     // Set your AWS access credentials and region here
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    sessionToken: process.env.AWS_SESSION_TOKEN,
-    region: 'us-east-1'
+    // sessionToken: process.env.AWS_SESSION_TOKEN,
+    region: 'us-east-1',
+    // localstack testing
+    endpoint: 'http://localhost.localstack.cloud:4566',
+    s3ForcePathStyle: true
 });
 
 async function uploadDocumentToS3(buffer, filename, domain, url, insertId) {
@@ -51,19 +55,27 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
             Body: pageContent
         }, function (err, data) {
             if (err) {
-                db.query(`update ${CRAWL_STATUS} set log="can't upload to s3: ${err.name}" where domain="${domain}" and url="${url}"`)
+                queryCountInc()
+                db.query(`update ${CRAWL_STATUS} set log="can't upload to s3: ${err.name}" where domain="${domain}" and url="${url}"`, () => {
+                    queryCountDec()
+                })
                 log.error(`s3 upload error for url ${url}: ${err}`)
             } if (data) {
                 let data_loc = data.Location;
-                data_loc = data_loc.split('/').slice(0,-1).join('/') + '/'
+                data_loc = data_loc.split('/').slice(0,-1).join('/') + '/';
+                queryCountInc()
                 db.query(`update ${CRAWL_STATUS} set s3_uri="${data_loc}" where domain="${domain}" and url="${url}"`, (err, result, fields) => {
                     if(err){
-                        db.query(`update ${CRAWL_STATUS} set log="can't update s3_uri: ${err.name}" where domain="${domain}" and url="${url}"`)
+                        queryCountInc()
+                        db.query(`update ${CRAWL_STATUS} set log="can't update s3_uri: ${err.name}" where domain="${domain}" and url="${url}"`, () => {
+                            queryCountDec()
+                        })
                         log.error(`db update error: ${err}`)
                     }
                     else{
                         log.info('s3_uri updated for ' + url)
                     }
+                    queryCountDec()
                 })
                 log.info("S3 Upload Success");
             }

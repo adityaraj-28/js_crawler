@@ -1,7 +1,7 @@
 'use strict';
 const CONSTANTS = require("./constants.js");
 const playwright = require('playwright');
-const db = require('./db')
+const {db, queryCountInc, queryCountDec} = require("./db");
 const _url = require('url');
 const fs =require('fs')
 const  { writePageContentToS3, uploadDocumentToS3 } = require('./s3.js')
@@ -75,7 +75,8 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
         if(value.status !== 1 && status === 1) {
             const update_query = `update ${CRAWL_STATUS} set log=NULL,status=1,redirection_chain='${chain}' where id=${value.id}`
             log.info('DB query'+ update_query)
-            db.query(update_query)
+            queryCountInc()
+            db.query(update_query, () => queryCountDec())
         } else {
             if(value.status === 1) {
                 log.info(`url ${url} already crawled`)
@@ -89,7 +90,9 @@ async function handleMapping(url_status_map, url, domain, level, status, chain=n
             query = `insert into ${CRAWL_STATUS} (domain, url, level, status, redirection_chain) values ('${domain}', '${url}', ${level}, ${status}, '${chain}')`
         }
         log.info(`DB query: ${query}`)
+        queryCountInc()
         db.query(query, (err, res) => {
+            queryCountDec()
             if(err){
                 log.error(`Error inserting to DB, url: ${url} : ${err.message}`)
                 throw new Error(err.message)
@@ -147,11 +150,13 @@ function extractUrls(page, url_status_map, level, domain) {
         catch (error) {
             log.error(error)
             const query = `update ${CRAWL_STATUS} set status=-1,log="${error.name}" where domain='${domain}' and url='${page.url()}'`
+            queryCountInc()
             db.query(query, (err, result, fields) => {
                 if(err)
                     log.error(`${query}, error: ${err.toString().slice(0, 800)}`)
                 else
                     log.info(`${query} success`)
+                queryCountDec()
             })
             reject(error);
         }
@@ -225,6 +230,7 @@ function fileTypeIsADownloadable(url) {
 }
 
 function handleIdAndDocumentUpload(domain, url, buffer, filename) {
+    queryCountInc()
     db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
         if (err) {
             log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
@@ -239,6 +245,7 @@ function handleIdAndDocumentUpload(domain, url, buffer, filename) {
                 log.error(err)
             }
         }
+        queryCountDec()
     })
 }
 
@@ -360,12 +367,14 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 log.info(`saving html for ${url} to s3`)
             }).catch((err) => {
                 const query = `update ${CRAWL_STATUS} set status=-1,log="${err}" where domain='${domain}' and url='${url}'`
+                queryCountInc()
                 db.query(query, (err, result, fields) => {
                     if(err){
                         log.error(`${query}, error: ${err}`)
                     } else {
                         log.info(`${query}, success`)
                     }
+                    queryCountDec()
                 })
                 log.error(err);
             })
@@ -387,22 +396,26 @@ function crawl(url, proxy, level, url_status_map, domain) {
                                    set status= -1,
                                        log="${error.toString().slice(0, 800)}"
                                    where domain ='${domain}' and url='${url}'`;
+                    queryCountInc()
                     db.query(query, (err, result, fields) => {
                         if (err) {
                             log.error(`${query}, error: ${err}`)
                         } else {
                             log.info(`${query}, success`)
                         }
+                        queryCountDec()
                     })
                 } else if (!url_status_map.has(url)) {
                     const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log)
                                    values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
+                    queryCountInc()
                     db.query(query, (err, result, fields) => {
                         if (err) {
                             log.error(`${query}, error: ${err}`)
                         } else {
                             log.info(`${query}, success`)
                         }
+                        queryCountDec()
                     })
                 }
             }
