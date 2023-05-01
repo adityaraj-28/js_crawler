@@ -2,6 +2,7 @@ FROM node:18.15.0
 
 RUN apt-get update
 RUN apt-get install dialog
+RUN apt-get -y install tmux
 
 WORKDIR /app
 
