@@ -8,7 +8,7 @@ const constants = require('./constants')
 
 async function fetch_unprocessed_urls(level, domain_list) {
     return new Promise((resolve, reject) => {
-        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 and domain in (${domain_list.map(x => `"${x}"`).join(', ')}) LIMIT 50`
+        const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 LIMIT 50`
         queryCountInc()
         db.query(query, (err, res) => {
             const results = []
@@ -105,7 +105,8 @@ function checkActiveDBQueriesAfterInterval() {
     if(query_check_ctr === constants.CHECK_COUNT){
         log.info("No active DB queries")
         log.info("=====ending=====")
-        db.end()
+        // after no active db connections for some time, wait for 10 seconds and then close program
+        setTimeout(process.exit(0), constants.EXIT_TIMER)
     }
 }
 

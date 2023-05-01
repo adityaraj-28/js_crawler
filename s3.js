@@ -12,10 +12,15 @@ const s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     sessionToken: process.env.AWS_SESSION_TOKEN,
-    region: 'us-east-1',
-    // localstack testing
+    region: 'us-east-1'
+
+    // comment above lines and uncomment below lines for localstack testing
+
+    // accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    // secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     // endpoint: 'http://localhost.localstack.cloud:4566',
     // s3ForcePathStyle: true
+
 });
 
 async function uploadDocumentToS3(buffer, filename, domain, url, insertId) {

@@ -12,5 +12,6 @@ module.exports = {
     CRAWL_STATUS: 'crawl_status',
     VALID_DOWNLOADABLE_EXTENSIONS: ['pdf', 'doc', 'docx'],
     INTERVAL: 3000,
-    CHECK_COUNT: 5
+    CHECK_COUNT: 5,
+    EXIT_TIMER: 10000
 }

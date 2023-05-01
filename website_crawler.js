@@ -251,6 +251,7 @@ function handleIdAndDocumentUpload(domain, url, buffer, filename) {
 
 function crawl(url, proxy, level, url_status_map, domain) {
     return new Promise(async (resolve, reject) => {
+        // no multiple entries in db for same url (basically url ending with and without slash should be treated same
         url = addSlashInUrl(url)
         log.info('Processing url: ' + url + ' level:' + level);
 
