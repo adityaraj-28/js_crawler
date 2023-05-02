@@ -266,6 +266,12 @@ function crawl(url, proxy, level, url_status_map, domain) {
         url = addSlashInUrl(url)
         log.info('Processing url: ' + url + ' level:' + level);
 
+        if(url_status_map.has(url) && url_status_map.get(url).status === true){
+            log.info(`Page ${url} already processed`)
+            reject('Page already processed')
+            return
+        }
+
         let browser = null;
         let page = null;
         let statusCode = null;
@@ -379,12 +385,6 @@ function crawl(url, proxy, level, url_status_map, domain) {
 
             if(statusCode === 999) throw new Error(`Response is null`)
             if (statusCode !== 200) throw new Error(`${statusCode}`);
-
-            if(url_status_map.has(url) && url_status_map.get(url).status === true){
-                log.info(`Page ${url} already processed`)
-                reject('Page already processed')
-                return
-            }
 
             const contentType = response.headers()['content-type']
             if(!isContentTypeValid(contentType)) {
