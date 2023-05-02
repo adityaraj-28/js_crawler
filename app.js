@@ -6,11 +6,12 @@ const log = require('./logger')
 require('dotenv').config();
 const constants = require('./constants')
 
-async function fetch_unprocessed_urls(level, domain_list) {
+async function fetch_unprocessed_urls(level) {
     return new Promise((resolve, reject) => {
         const query = `select domain, url from ${CRAWL_STATUS} where level=${level} and status=0 LIMIT 50`
         queryCountInc()
         db.query(query, (err, res) => {
+            queryCountDec()
             const results = []
             if(err) {
                 log.error(`error getting urls at level: ${level}`)
@@ -22,7 +23,6 @@ async function fetch_unprocessed_urls(level, domain_list) {
                 })
                 resolve(results)
             }
-            queryCountDec()
         })
     })
 }
@@ -36,6 +36,7 @@ async function get_root_domain(){
         log.info(`Executing query: ${query}`)
         queryCountInc()
         db.query(query, (err, res) => {
+            queryCountDec()
             if(err){
                 log.error('error fetching root domain, terminating app')
                 process.exit(0)
@@ -45,7 +46,6 @@ async function get_root_domain(){
             res.forEach(row => {
                 domains.push(row.name)
             })
-            queryCountDec()
             resolve(domains)
         });
     })
@@ -74,9 +74,9 @@ function getDomainUrls(domain) {
         log.info(`executing query: ${query}`)
         queryCountInc()
         db.query(query, (error, results, _) => {
+            queryCountDec()
             if (error) {
                 log.error(`getDomainUrl: ${error.message}`)
-                queryCountDec()
                 reject(error)
             } else {
                 const url_status_map = new Map()
@@ -88,7 +88,6 @@ function getDomainUrls(domain) {
                         });
                     }
                 });
-                queryCountDec()
                 resolve(url_status_map)
             }
         });
@@ -103,7 +102,7 @@ function checkActiveDBQueriesAfterInterval() {
         query_check_ctr = 0
     }
     if(query_check_ctr === constants.CHECK_COUNT){
-        log.info("No active DB queries")
+        log.info("No active DB/S3 queries")
         log.info("=====ending=====")
         // after no active db connections for some time, wait for 10 seconds and then close program
         setTimeout(process.exit(0), constants.EXIT_TIMER)
@@ -112,14 +111,13 @@ function checkActiveDBQueriesAfterInterval() {
 
 async function run() {
     log.info('=====started======')
-    const root_domains = await processRootDomains();
-
+    await processRootDomains();
     let level = 1
     while(1){
         if (level > LEVEL_LIMIT) {
             break
         }
-        const domain_url_list = await fetch_unprocessed_urls(level, root_domains)
+        const domain_url_list = await fetch_unprocessed_urls(level)
         if(domain_url_list.length === 0) {
             level++;
             break
@@ -131,7 +129,9 @@ async function run() {
             try {
                 if(url_status_map.has(domain_url.url) && (url_status_map.get(domain_url.url).status === 1 || url_status_map.get(domain_url.url).status === -1)) {
                     const query = `delete from ${CRAWL_STATUS} where domain="${domain_url.domain}" and url="${domain_url.url}" and status=0`
+                    queryCountInc()
                     db.query(query, (err, res, fields) => {
+                        queryCountDec()
                         if(err) log.error(`${domain_url.domain}. url: ${domain_url.url}, err: ${err}`)
                         else{
                             log.info(`${query}, success`)
@@ -142,7 +142,9 @@ async function run() {
                 }
                 // -2 to mark that code has touched this url
                 const query = `update ${CRAWL_STATUS} set status=-2 where domain='${domain_url.domain}' and url='${domain_url.url}'`
+                queryCountInc()
                 db.query(query, (err, res, fields) => {
+                    queryCountDec()
                     if (err) {
                         log.error(`${query}, error: ${err}`)
                         throw new Error(`${err}`)

@@ -1,6 +1,6 @@
 docker build -t crawler .
 batch_size=20
-parallelism=10
+parallelism=5
 for i in {1..$parallelism}; do
   container_id=$(docker run -d crawler)
   docker exec -it $container_id tmux new -s run -d

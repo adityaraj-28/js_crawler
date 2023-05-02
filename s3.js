@@ -31,11 +31,13 @@ async function uploadDocumentToS3(buffer, filename, domain, url, insertId) {
 
     const directory = `${domain}_${insertId == null ? '': insertId}`
     const s3Key = `${env}/${domain}/${directory}/documents/${filename}`
+    queryCountInc()
     s3.upload({
         Bucket: constants.S3_BUCKET_NAME,
         Key: s3Key,
         Body: buffer,
     }, function (err, _)  {
+        queryCountDec()
         if(err) {
             log.error(`Document Upload to s3 failed, url:${url}, filename: ${filename}, ${err}`)
         } else {
@@ -53,12 +55,13 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
     const directory = `${domain}_${insertId == null ? '': insertId}`
     const s3Key = `${env}/${domain}/${directory}/data.txt`
 
-
+    queryCountInc()
     s3.upload({
             Bucket: constants.S3_BUCKET_NAME,
             Key: s3Key,
             Body: pageContent
         }, function (err, data) {
+            queryCountDec()
             if (err) {
                 queryCountInc()
                 db.query(`update ${CRAWL_STATUS} set log="can't upload to s3: ${err.name}" where domain="${domain}" and url="${url}"`, () => {
@@ -70,6 +73,7 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
                 data_loc = data_loc.split('/').slice(0,-1).join('/') + '/';
                 queryCountInc()
                 db.query(`update ${CRAWL_STATUS} set s3_uri="${data_loc}" where domain="${domain}" and url="${url}"`, (err, result, fields) => {
+                    queryCountDec()
                     if(err){
                         queryCountInc()
                         db.query(`update ${CRAWL_STATUS} set log="can't update s3_uri: ${err.name}" where domain="${domain}" and url="${url}"`, () => {
@@ -80,7 +84,6 @@ async function writePageContentToS3(pageContent, domain, url, insertId) {
                     else{
                         log.info('s3_uri updated for ' + url)
                     }
-                    queryCountDec()
                 })
                 log.info("S3 Upload Success");
             }

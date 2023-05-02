@@ -152,18 +152,18 @@ function extractUrls(page, url_status_map, level, domain) {
             const query = `update ${CRAWL_STATUS} set status=-1,log="${error.name}" where domain='${domain}' and url='${page.url()}'`
             queryCountInc()
             db.query(query, (err, result, fields) => {
+                queryCountDec()
                 if(err)
                     log.error(`${query}, error: ${err.toString().slice(0, 800)}`)
                 else
                     log.info(`${query} success`)
-                queryCountDec()
             })
             reject(error);
         }
     });
 }
 
-function downloadImages(page, insertId, url, domain) {
+function downloadImages(page, insertId, url, domain, downloaded_filenames) {
     return new Promise(async (resolve, reject) => {
         try {
             const imgElements = await page.$$('img');
@@ -180,7 +180,12 @@ function downloadImages(page, insertId, url, domain) {
                 try {
                     let filename = path.basename(imageUrl);
                     filename = augment_image_name(filename)
+                    let filename_to_save = filename
+                    if(downloaded_filenames.has(filename)){
+                        filename_to_save = `${downloaded_filenames.get(filename)}_${filename}`
+                    }
                     request.get({url: imageUrl, timeout: 5000}, (err, response, _) => {
+                        queryCountInc()
                         if(err)  {
                             log.error(`Error downloading image ${imageUrl}, for ${url}, ${err}`)
                         } else {
@@ -190,10 +195,16 @@ function downloadImages(page, insertId, url, domain) {
                             });
                             response.on('end', () => {
                                 const buffer = Buffer.concat(chunks);
+                                if(filename_to_save === filename){
+                                    downloaded_filenames.set(filename, 1)
+                                } else {
+                                    downloaded_filenames.set(filename, downloaded_filenames.get(filename) + 1)
+                                }
                                 uploadDocumentToS3(buffer, filename, domain, url, insertId)
                                 log.info(`Image downloaded ${imageUrl} from ${url}`)
                             });
                         }
+                        queryCountDec()
                     })
                 } catch(err) {
                     log.error(`Error downloading image ${imageUrl}, for ${url}, ${err}`)
@@ -232,6 +243,7 @@ function fileTypeIsADownloadable(url) {
 function handleIdAndDocumentUpload(domain, url, buffer, filename) {
     queryCountInc()
     db.query(`select id from ${CRAWL_STATUS} where domain="${domain}" and url="${url}"`, (err, res, fields) => {
+        queryCountDec()
         if (err) {
             log.error(`error fetching id, domain:${domain}, url: ${url}, error: ${err}`)
         } else {
@@ -245,7 +257,6 @@ function handleIdAndDocumentUpload(domain, url, buffer, filename) {
                 log.error(err)
             }
         }
-        queryCountDec()
     })
 }
 
@@ -273,7 +284,7 @@ function crawl(url, proxy, level, url_status_map, domain) {
 
             page = await browser.newPage(options);
             let response = null;
-
+            const downloaded_filenames = new Map()
             page.on('response', async response => {
                     const res_url = response.url()
                     try {
@@ -288,7 +299,14 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             const buffer = await response.body()
                             let filename = `${path.basename(temp_url)}`
                             filename = augment_image_name(filename);
-                            handleIdAndDocumentUpload(domain, url, buffer, filename);
+                            if(downloaded_filenames.has(filename)) {
+                                handleIdAndDocumentUpload(domain, url, buffer, `${downloaded_filenames.get(filename)}_${filename}`);
+                                downloaded_filenames.set(filename, downloaded_filenames.get(filename) + 1)
+                            } else {
+                                handleIdAndDocumentUpload(domain, url, buffer, filename);
+                                downloaded_filenames.set(filename, 1)
+                            }
+
                         }
                     } catch (err) {
                         log.error(`url: ${url}, resource-url:${res_url}, err: ${err}`)
@@ -305,18 +323,30 @@ function crawl(url, proxy, level, url_status_map, domain) {
                             log.error(`Error downloading domain: ${domain}, url: ${url}`)
                         } else {
                             const buffer = Buffer.from(body)
-                            handleIdAndDocumentUpload(domain, url, buffer, filename);
+                            if(downloaded_filenames.has(filename)) {
+                                handleIdAndDocumentUpload(domain, url, buffer, `${downloaded_filenames.get(filename)}_${filename}`);
+                                downloaded_filenames.set(filename, downloaded_filenames.get(filename) + 1)
+                            } else {
+                                handleIdAndDocumentUpload(domain, url, buffer, filename);
+                                downloaded_filenames.set(filename, 1)
+                            }
                         }
                     })
                 }
             })
 
             try {
+                queryCountInc()
                 response = await page.goto(url, {waitUntil: "networkidle", timeout: 20000 });
+                queryCountDec()
             } catch(error){
+                queryCountDec()
                 try {
+                    queryCountInc()
                     response = await page.waitForResponse(response => response.status() === 200, {timeout: 20000})
+                    queryCountDec()
                 } catch(error) {
+                    queryCountDec()
                     log.error(`for url: ${url}, error: ${error}`);
                 }
             }
@@ -327,9 +357,19 @@ function crawl(url, proxy, level, url_status_map, domain) {
             if(statusCode == null || Math.floor(statusCode/100) === 4) {
                 const url_end_slash_removed = url.slice(0,-1)
                 try {
+                    queryCountInc()
                     response = await page.goto(url_end_slash_removed, {waitUntil: "networkidle", timeout: 20000 });
+                    queryCountDec()
                 } catch(error) {
-                    log.error(`for url: ${url_end_slash_removed}, error: ${error}`);
+                    queryCountDec()
+                    try {
+                        queryCountInc()
+                        response = await page.waitForResponse(response => response.status() === 200, {timeout: 20000})
+                        queryCountDec()
+                    } catch(error) {
+                        queryCountDec()
+                        log.error(`for url: ${url}, error: ${error}`);
+                    }
                 }
             }
             if(response == null)
@@ -370,17 +410,17 @@ function crawl(url, proxy, level, url_status_map, domain) {
                 const query = `update ${CRAWL_STATUS} set status=-1,log="${err}" where domain='${domain}' and url='${url}'`
                 queryCountInc()
                 db.query(query, (err, result, fields) => {
+                    queryCountDec()
                     if(err){
                         log.error(`${query}, error: ${err}`)
                     } else {
                         log.info(`${query}, success`)
                     }
-                    queryCountDec()
                 })
                 log.error(err);
             })
 
-            await downloadImages(page, insertId, url, domain).then(res => log.info(res)).catch(err => log.error(err))
+            await downloadImages(page, insertId, url, domain, downloaded_filenames).then(res => log.info(res)).catch(err => log.error(err))
 
             await Promise.all([
                 await extractUrls(page, url_status_map, level, domain)
@@ -399,24 +439,24 @@ function crawl(url, proxy, level, url_status_map, domain) {
                                    where domain ='${domain}' and url='${url}'`;
                     queryCountInc()
                     db.query(query, (err, result, fields) => {
+                        queryCountDec()
                         if (err) {
                             log.error(`${query}, error: ${err}`)
                         } else {
                             log.info(`${query}, success`)
                         }
-                        queryCountDec()
                     })
                 } else if (!url_status_map.has(url)) {
                     const query = `insert into ${CRAWL_STATUS} (domain, url, level, status, log)
                                    values ('${domain}', '${url}', ${level}, -1, "${error.toString().slice(0, 800)}")`
                     queryCountInc()
                     db.query(query, (err, result, fields) => {
+                        queryCountDec()
                         if (err) {
                             log.error(`${query}, error: ${err}`)
                         } else {
                             log.info(`${query}, success`)
                         }
-                        queryCountDec()
                     })
                 }
             }

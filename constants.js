@@ -11,7 +11,7 @@ module.exports = {
     IMAGE_EXTENSION : ['png', 'jpg', 'jpeg', 'svg', 'bmp', 'webp','ico'],
     CRAWL_STATUS: 'crawl_status',
     VALID_DOWNLOADABLE_EXTENSIONS: ['pdf', 'doc', 'docx'],
-    INTERVAL: 3000,
+    INTERVAL: 5000,
     CHECK_COUNT: 5,
-    EXIT_TIMER: 10000
+    EXIT_TIMER: 40000
 }
